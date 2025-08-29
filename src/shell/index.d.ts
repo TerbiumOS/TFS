@@ -1,4 +1,4 @@
 export declare class Shell {
-    constructor(handle: FileSystemHandle);
+	constructor(handle: FileSystemHandle);
 }
 //# sourceMappingURL=index.d.ts.map
