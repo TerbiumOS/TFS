@@ -6,7 +6,9 @@
 	"type": "module",
 	"scripts": {
 		"dev": "rspack dev",
-		"build": "rspack build --configLoader=native"
+		"build": "rspack build --configLoader=native",
+		"check": "biome check . --write",
+		"fmt": "biome format --write ."
 	},
 	"keywords": [],
 	"author": "TerbiumOS Development",
@@ -16,6 +18,7 @@
 		"@biomejs/biome": "^2.2.2",
 		"@rspack/cli": "^1.5.1",
 		"@rspack/core": "^1.5.1",
+		"ts-loader": "^9.5.4",
 		"typescript": "^5.9.2"
 	}
 }
