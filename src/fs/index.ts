@@ -110,25 +110,41 @@ export class FS {
 		const parts = normalizedPath.split("/").filter(Boolean);
 		let dirPromise = Promise.resolve(this.handle);
 
-		for (const part of parts) {
-			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(part));
+		for (let i = 0; i < parts.length - 1; i++) {
+			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(parts[i] as string));
 		}
 
+		const lastPart = parts[parts.length - 1];
 		dirPromise
-			// @ts-expect-error
-			.then(dirHandle => dirHandle.getFileHandle(parts[parts.length - 1]))
-			.then(fileHandle => fileHandle.getFile())
-			.then(file => {
-				callback(null, {
-					name: file.name,
-					size: file.size,
-					type: file.type,
-					lastModified: file.lastModified,
-				});
-			})
-			.catch(err => {
-				callback(err, null);
-			});
+			.then(dirHandle =>
+				dirHandle
+					.getFileHandle(lastPart as string)
+					.then(fileHandle =>
+						fileHandle.getFile().then(file =>
+							callback(null, {
+								name: file.name,
+								size: file.size,
+								type: file.type,
+								lastModified: file.lastModified,
+							}),
+						),
+					)
+					.catch(() =>
+						dirHandle.getDirectoryHandle(lastPart as string).then(() =>
+							callback(null, {
+								name: lastPart as string,
+								size: 0,
+								type: "directory",
+								lastModified: 0,
+							}),
+						),
+					),
+			)
+			.catch(err => callback(err, null));
+	}
+
+	lstat(path: string, callback: (err: Error | null, stats?: { name: string; size: number; type: string; lastModified: number } | null) => void) {
+		this.stat(path, callback);
 	}
 
 	promises = {

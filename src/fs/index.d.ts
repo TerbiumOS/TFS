@@ -19,6 +19,18 @@ export declare class FS {
 			} | null,
 		) => void,
 	): void;
+	lstat(
+		path: string,
+		callback: (
+			err: Error | null,
+			stats?: {
+				name: string;
+				size: number;
+				type: string;
+				lastModified: number;
+			} | null,
+		) => void,
+	): void;
 	promises: {
 		writeFile: (file: string, content: string | ArrayBuffer | Blob) => Promise<void>;
 		readFile: (file: string, type: "utf8" | "arraybuffer" | "blob") => Promise<any>;

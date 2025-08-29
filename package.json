@@ -10,7 +10,15 @@
 		"check": "biome check . --write",
 		"fmt": "biome format --write ."
 	},
-	"keywords": [],
+	"keywords": [
+		"fs",
+		"node",
+		"file",
+		"filesystem",
+		"browser",
+		"browser-fs",
+		"opfs"
+	],
 	"author": "TerbiumOS Development",
 	"license": "Apache-2.0",
 	"packageManager": "pnpm@10.13.1",
