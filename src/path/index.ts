@@ -1,3 +1,3 @@
 export class Path {
-	constructor(handle: FileSystemHandle) {}
+	constructor(handle: FileSystemDirectoryHandle) {}
 }

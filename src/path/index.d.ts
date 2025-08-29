@@ -1,4 +1,4 @@
 export declare class Path {
-	constructor(handle: FileSystemHandle);
+    constructor(handle: FileSystemDirectoryHandle);
 }
 //# sourceMappingURL=index.d.ts.map

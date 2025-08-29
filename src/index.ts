@@ -1,25 +1,34 @@
-import { Buffer } from "./buffer";
+import { Buffer } from "buffer";
 import { FS } from "./fs";
 import { Path } from "./path";
 import { Shell } from "./shell";
+import { version } from "../package.json";
+
+declare global {
+	interface Window {
+		tfs: typeof TFS;
+	}
+}
 
 export class TFS {
-	handle: FileSystemHandle;
+	handle: FileSystemDirectoryHandle;
 	fs: FS;
 	path: Path;
-	buffer: Buffer;
+	buffer: typeof Buffer = Buffer;
 	shell: Shell;
+	version: string = version;
 
-	private constructor(handle: FileSystemHandle) {
+	private constructor(handle: FileSystemDirectoryHandle) {
 		this.handle = handle;
 		this.fs = new FS(this.handle);
 		this.path = new Path(this.handle);
-		this.buffer = new Buffer(this.handle);
 		this.shell = new Shell(this.handle);
 	}
 
-	static async create(): Promise<TFS> {
+	static async init(): Promise<TFS> {
 		const handle = await navigator.storage.getDirectory();
 		return new TFS(handle);
 	}
 }
+
+window.tfs = TFS;
