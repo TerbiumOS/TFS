@@ -323,19 +323,22 @@ export class FS {
 			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(parts[i] as string));
 		}
 		const fileName = parts[parts.length - 1];
-		dirPromise.then(dirHandle => {
-			return dirHandle.removeEntry(fileName as string);
-		}).then(() => {
-			if (callback) callback(null);
-		}).catch((err) => {
-			if (err && err.name === "NotFoundError") {
-				callback?.(createFSError("ENOENT", path));
-			} else if (err && err.name === "TypeMismatchError") {
-				callback?.(createFSError("EISDIR", path));
-			} else {
-				callback?.(createFSError("UNKNOWN", path));
-			}
-		});
+		dirPromise
+			.then(dirHandle => {
+				return dirHandle.removeEntry(fileName as string);
+			})
+			.then(() => {
+				if (callback) callback(null);
+			})
+			.catch(err => {
+				if (err && err.name === "NotFoundError") {
+					callback?.(createFSError("ENOENT", path));
+				} else if (err && err.name === "TypeMismatchError") {
+					callback?.(createFSError("EISDIR", path));
+				} else {
+					callback?.(createFSError("UNKNOWN", path));
+				}
+			});
 	}
 
 	rmdir(path: string, callback?: (err: Error | null) => void) {}
