@@ -8,7 +8,8 @@
 		"dev": "rspack dev",
 		"build": "rspack build --configLoader=native",
 		"check": "biome check . --write",
-		"fmt": "biome format --write ."
+		"fmt": "biome format --write .",
+		"test": "cd demo; npm run test"
 	},
 	"keywords": [
 		"fs",

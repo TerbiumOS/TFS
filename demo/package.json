@@ -1,0 +1,19 @@
+{
+  "name": "demo",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "tsx operations.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.13.1",
+  "dependencies": {
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.5",
+    "vite": "^7.1.4",
+    "vite-plugin-static-copy": "^3.1.2"
+  }
+}

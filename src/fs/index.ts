@@ -1,3 +1,5 @@
+import { createFSError } from "./errors";
+
 export class FS {
 	handle: FileSystemDirectoryHandle;
 	currPath: string;
@@ -30,22 +32,42 @@ export class FS {
 		return newPath;
 	}
 
-	writeFile(file: string, content: string | ArrayBuffer | Blob) {
+	writeFile(file: string, content: string | ArrayBuffer | Blob, callback?: (err: Error | null) => void) {
 		const normalizedPath = this.normalizePath(file);
 		const parts = normalizedPath.split("/").filter(Boolean);
 		let dirPromise = Promise.resolve(this.handle);
+
+		for (let i = 0; i < parts.length - 1; i++) {
+			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(parts[i] as string, { create: true }));
+		}
 
 		const fileName = parts[parts.length - 1];
 		dirPromise
 			.then(dirHandle => dirHandle.getFileHandle(fileName as string, { create: true }))
 			.then(fileHandle => fileHandle.createWritable())
-			.then(writable => writable.write(content).then(() => writable.close()));
+			.then(writable => writable.write(content).then(() => writable.close()))
+			.then(() => {
+				if (callback) callback(null);
+			})
+			.catch(err => {
+				if (callback) {
+					if (err && err.name === "NotFoundError") {
+						callback(createFSError("ENOENT", file));
+					} else {
+						console.log(err);
+						callback(createFSError("UNKNOWN", file));
+					}
+				}
+			});
 	}
 
-	readFile(file: string, type: "utf8" | "arraybuffer" | "blob", callback: (err: Error | null, data: any) => void) {
+	readFile(file: string, type: "utf8" | "arraybuffer" | "blob" | "base64", callback: (err: Error | null, data: any) => void) {
 		const normalizedPath = this.normalizePath(file);
 		const parts = normalizedPath.split("/").filter(Boolean);
 		let dirPromise: Promise<FileSystemDirectoryHandle> = Promise.resolve(this.handle);
+		for (let i = 0; i < parts.length - 1; i++) {
+			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(parts[i] as string));
+		}
 		const fileName = parts[parts.length - 1];
 		dirPromise
 			.then(dirHandle => dirHandle.getFileHandle(fileName as string))
@@ -56,19 +78,47 @@ export class FS {
 				} else if (type === "blob") {
 					callback(null, file);
 					return;
+				} else if (type === "base64") {
+					const reader = new FileReader();
+					reader.onload = () => {
+						callback(null, reader.result);
+					};
+					reader.readAsDataURL(file);
+					return;
 				}
 				file.text().then(data => callback(null, data));
 			})
-			.catch(err => callback(err, null));
+			.catch(err => {
+				if (err && err.name === "NotFoundError") {
+					callback(createFSError("ENOENT", file), null);
+				} else if (err && err.name === "TypeMismatchError") {
+					callback(createFSError("EISDIR", file), null);
+				} else {
+					callback(createFSError("UNKNOWN", file), null);
+				}
+			});
 	}
 
-	mkdir(dir: string) {
+	mkdir(dir: string, callback?: (err: Error | null) => void) {
 		const normalizedPath = this.normalizePath(dir);
 		const parts = normalizedPath.split("/").filter(Boolean);
 		let dirPromise = Promise.resolve(this.handle);
 
 		for (const part of parts) {
 			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(part, { create: true }));
+		}
+		if (callback) {
+			dirPromise
+				.then(() => callback(null))
+				.catch(err => {
+					if (err && err.name === "NotFoundError") {
+						callback(createFSError("ENOENT", dir));
+					} else if (err && err.name === "TypeMismatchError") {
+						callback(createFSError("EISDIR", dir));
+					} else {
+						callback(createFSError("UNKNOWN", dir));
+					}
+				});
 		}
 	}
 
@@ -96,12 +146,26 @@ export class FS {
 								next();
 							}
 						})
-						.catch(err => callback(err, null));
+						.catch(err => {
+							if (err && err.name === "NotFoundError") {
+								callback(createFSError("ENOENT", dir), null);
+							} else if (err && err.name === "TypeMismatchError") {
+								callback(createFSError("EISDIR", dir), null);
+							} else {
+								callback(createFSError("UNKNOWN", dir), null);
+							}
+						});
 				}
 				next();
 			})
 			.catch(err => {
-				callback(err, null);
+				if (err && err.name === "NotFoundError") {
+					callback(createFSError("ENOENT", dir), null);
+				} else if (err && err.name === "TypeMismatchError") {
+					callback(createFSError("EISDIR", dir), null);
+				} else {
+					callback(createFSError("UNKNOWN", dir), null);
+				}
 			});
 	}
 
@@ -129,22 +193,142 @@ export class FS {
 							}),
 						),
 					)
-					.catch(() =>
-						dirHandle.getDirectoryHandle(lastPart as string).then(() =>
-							callback(null, {
-								name: lastPart as string,
-								size: 0,
-								type: "directory",
-								lastModified: 0,
-							}),
-						),
-					),
+					.catch(err => {
+						if (err && err.name === "NotFoundError") {
+							dirHandle
+								.getDirectoryHandle(lastPart as string)
+								.then(() =>
+									callback(null, {
+										name: lastPart as string,
+										size: 0,
+										type: "directory",
+										lastModified: 0,
+									}),
+								)
+								.catch(dirErr => {
+									if (err && err.name === "NotFoundError") {
+										callback(createFSError("ENOENT", path), null);
+									} else if (err && err.name === "TypeMismatchError") {
+										callback(createFSError("ENOTDIR", path), null);
+									} else {
+										callback(createFSError("UNKNOWN", path), null);
+									}
+								});
+						} else if (err && err.name === "TypeMismatchError") {
+							callback(createFSError("EISDIR", path), null);
+						} else {
+							callback(createFSError("UNKNOWN", path), null);
+						}
+					}),
 			)
-			.catch(err => callback(err, null));
+			.catch(err => {
+				if (err && err.name === "NotFoundError") {
+					callback(createFSError("ENOENT", path), null);
+				} else if (err && err.name === "TypeMismatchError") {
+					callback(createFSError("ENOTDIR", path), null);
+				} else {
+					callback(createFSError("UNKNOWN", path), null);
+				}
+			});
 	}
 
 	lstat(path: string, callback: (err: Error | null, stats?: { name: string; size: number; type: string; lastModified: number } | null) => void) {
 		this.stat(path, callback);
+	}
+
+	watch(path: string, options?: { recursive?: boolean }, listener?: (event: "rename" | "change", filename: string) => void) {
+		const normalizedPath = this.normalizePath(path);
+		let closed = false;
+		let prevSnapshot: Map<string, { size: number; lastModified: number; type: string }> = new Map();
+		const EventEmitter = class {
+			private listeners: { [event in "rename" | "change"]?: Array<(event: "rename" | "change", filename: string) => void> } = {};
+			on(event: "rename" | "change", cb: (event: "rename" | "change", filename: string) => void) {
+				if (!this.listeners[event]) this.listeners[event] = [];
+				this.listeners[event]!.push(cb);
+			}
+			emit(event: "rename" | "change", filename: string) {
+				if (this.listeners[event]) {
+					for (const cb of this.listeners[event]!) cb(event, filename);
+				}
+			}
+			removeAllListeners() {
+				this.listeners = {};
+			}
+		};
+		const emitter = new EventEmitter();
+		if (listener) {
+			emitter.on("change", listener);
+			emitter.on("rename", listener);
+		}
+		const scan = async () => {
+			if (closed) return;
+			const snapshot = new Map<string, { size: number; lastModified: number; type: string }>();
+			const walk = async (dir: string) => {
+				const entries: string[] = await this.promises.readdir(dir).catch(() => []);
+				for (const entry of entries) {
+					const fullPath = this.normalizePath(dir + "/" + entry);
+					const stat = await this.promises.stat(fullPath).catch(() => null);
+					if (stat) {
+						snapshot.set(fullPath, { size: stat.size, lastModified: stat.lastModified, type: stat.type });
+						if (options?.recursive && stat.type === "directory") {
+							await walk(fullPath);
+						}
+					}
+				}
+			};
+			const stat = await this.promises.stat(normalizedPath).catch(() => null);
+			if (stat) {
+				snapshot.set(normalizedPath, { size: stat.size, lastModified: stat.lastModified, type: stat.type });
+				if (options?.recursive && stat.type === "directory") {
+					await walk(normalizedPath);
+				}
+			}
+			for (const [file, info] of snapshot) {
+				if (!prevSnapshot.has(file)) {
+					emitter.emit("rename", file);
+				} else {
+					const prev = prevSnapshot.get(file)!;
+					if (info.size !== prev.size || info.lastModified !== prev.lastModified) {
+						emitter.emit("change", file);
+					}
+				}
+			}
+			for (const file of prevSnapshot.keys()) {
+				if (!snapshot.has(file)) {
+					emitter.emit("rename", file);
+				}
+			}
+			prevSnapshot = snapshot;
+		};
+		let interval: any = setInterval(scan, 500);
+		const watcher = {
+			on: (event: "rename" | "change", cb: (event: "rename" | "change", filename: string) => void) => {
+				emitter.on(event, cb);
+			},
+			close: () => {
+				closed = true;
+				clearInterval(interval);
+				emitter.removeAllListeners();
+			},
+		};
+		scan();
+		return watcher;
+	}
+
+	unlink(path: string, callback?: (err: Error | null) => void) {
+		
+	}
+
+	rmdir(path: string, callback?: (err: Error | null) => void) {
+
+	}
+
+	rename(oldPath: string, newPath: string, callback?: (err: Error | null) => void) {
+		
+	}
+
+	copyFile(oldPath: string, newPath: string, callback?: (err: Error | null) => void) {
+
 	}
 
 	promises = {
@@ -193,5 +377,60 @@ export class FS {
 				});
 			});
 		},
+		lstat: (path: string) => {
+			return new Promise<{ name: string; size: number; type: string; lastModified: number } | null>((resolve, reject) => {
+				this.lstat(path, (err, stats) => {
+					if (err) {
+						reject(err);
+					} else {
+						resolve(stats!);
+					}
+				});
+			});
+		},
+		unlink: (path: string) => {
+			return new Promise<void>((resolve, reject) => {
+				this.unlink(path, (err) => {
+					if (err) {
+						reject(err);
+					} else {
+						resolve();
+					}
+				});
+			});
+		},
+		rmdir: (path: string) => {
+			return new Promise<void>((resolve, reject) => {
+				this.rmdir(path, (err) => {
+					if (err) {
+						reject(err);
+					} else {
+						resolve();
+					}
+				});
+			});
+		},
+		rename: (oldPath: string, newPath: string) => {
+			return new Promise<void>((resolve, reject) => {
+				this.rename(oldPath, newPath, (err) => {
+					if (err) {
+						reject(err);
+					} else {
+						resolve();
+					}
+				});
+			});
+		},
+		copyFile: (oldPath: string, newPath: string) => {
+			return new Promise<void>((resolve, reject) => {
+				this.copyFile(oldPath, newPath, (err) => {
+					if (err) {
+						reject(err);
+					} else {
+						resolve();
+					}
+				});
+			});
+		}
 	};
 }
