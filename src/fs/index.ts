@@ -315,21 +315,13 @@ export class FS {
 		return watcher;
 	}
 
-	unlink(path: string, callback?: (err: Error | null) => void) {
-		
-	}
+	unlink(path: string, callback?: (err: Error | null) => void) {}
 
-	rmdir(path: string, callback?: (err: Error | null) => void) {
+	rmdir(path: string, callback?: (err: Error | null) => void) {}
 
-	}
+	rename(oldPath: string, newPath: string, callback?: (err: Error | null) => void) {}
 
-	rename(oldPath: string, newPath: string, callback?: (err: Error | null) => void) {
-		
-	}
-
-	copyFile(oldPath: string, newPath: string, callback?: (err: Error | null) => void) {
-
-	}
+	copyFile(oldPath: string, newPath: string, callback?: (err: Error | null) => void) {}
 
 	promises = {
 		writeFile: (file: string, content: string | ArrayBuffer | Blob) => {
@@ -390,7 +382,7 @@ export class FS {
 		},
 		unlink: (path: string) => {
 			return new Promise<void>((resolve, reject) => {
-				this.unlink(path, (err) => {
+				this.unlink(path, err => {
 					if (err) {
 						reject(err);
 					} else {
@@ -401,7 +393,7 @@ export class FS {
 		},
 		rmdir: (path: string) => {
 			return new Promise<void>((resolve, reject) => {
-				this.rmdir(path, (err) => {
+				this.rmdir(path, err => {
 					if (err) {
 						reject(err);
 					} else {
@@ -412,7 +404,7 @@ export class FS {
 		},
 		rename: (oldPath: string, newPath: string) => {
 			return new Promise<void>((resolve, reject) => {
-				this.rename(oldPath, newPath, (err) => {
+				this.rename(oldPath, newPath, err => {
 					if (err) {
 						reject(err);
 					} else {
@@ -423,7 +415,7 @@ export class FS {
 		},
 		copyFile: (oldPath: string, newPath: string) => {
 			return new Promise<void>((resolve, reject) => {
-				this.copyFile(oldPath, newPath, (err) => {
+				this.copyFile(oldPath, newPath, err => {
 					if (err) {
 						reject(err);
 					} else {
@@ -431,6 +423,6 @@ export class FS {
 					}
 				});
 			});
-		}
+		},
 	};
 }
