@@ -315,7 +315,28 @@ export class FS {
 		return watcher;
 	}
 
-	unlink(path: string, callback?: (err: Error | null) => void) {}
+	unlink(path: string, callback?: (err: Error | null) => void) {
+		const normalizedPath = this.normalizePath(path);
+		const parts = normalizedPath.split("/").filter(Boolean);
+		let dirPromise: Promise<FileSystemDirectoryHandle> = Promise.resolve(this.handle);
+		for (let i = 0; i < parts.length - 1; i++) {
+			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(parts[i] as string));
+		}
+		const fileName = parts[parts.length - 1];
+		dirPromise.then(dirHandle => {
+			return dirHandle.removeEntry(fileName as string);
+		}).then(() => {
+			if (callback) callback(null);
+		}).catch((err) => {
+			if (err && err.name === "NotFoundError") {
+				callback?.(createFSError("ENOENT", path));
+			} else if (err && err.name === "TypeMismatchError") {
+				callback?.(createFSError("EISDIR", path));
+			} else {
+				callback?.(createFSError("UNKNOWN", path));
+			}
+		});
+	}
 
 	rmdir(path: string, callback?: (err: Error | null) => void) {}
 
