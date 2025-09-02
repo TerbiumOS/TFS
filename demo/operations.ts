@@ -11,12 +11,17 @@ async function run() {
 		if (isBuilding) return;
 		isBuilding = true;
 
-		const buildProcess = exec("npm run build", { cwd: "../" });
-		buildProcess.stdout?.on("data", data => console.log(`[build] ${data}`));
-		buildProcess.stderr?.on("data", data => console.error(`[build error] ${data}`));
+		const buildProc = exec("npm run build", { cwd: "../" });
+		buildProc.stdout?.on("data", data => console.log(`[build] ${data}`));
+		buildProc.stderr?.on("data", data => console.error(`[build error] ${data}`));
 
-		buildProcess.on("close", () => {
-			isBuilding = false;
+		buildProc.on("close", () => {
+			const fmtProc = exec("npm run fmt", { cwd: "../" });
+			fmtProc.stdout?.on("data", data => console.log(`[biome] ${data}`));
+			fmtProc.stderr?.on("data", data => console.error(`[biome error] ${data}`));
+			fmtProc.on("close", () => {
+				isBuilding = false;
+			});
 		});
 	});
 }

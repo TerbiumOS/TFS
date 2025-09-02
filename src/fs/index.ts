@@ -57,8 +57,7 @@ export class FS {
 					if (err && err.name === "NotFoundError") {
 						callback(createFSError("ENOENT", file));
 					} else {
-						console.log(err);
-						callback(createFSError("UNKNOWN", file));
+						callback(createFSError("UNKNOWN", file, undefined, err.message));
 					}
 				}
 			});
@@ -97,7 +96,7 @@ export class FS {
 				} else if (err && err.name === "TypeMismatchError") {
 					callback(createFSError("EISDIR", file), null);
 				} else {
-					callback(createFSError("UNKNOWN", file), null);
+					callback(createFSError("UNKNOWN", file, undefined, err.message), null);
 				}
 			});
 	}
@@ -119,7 +118,7 @@ export class FS {
 					} else if (err && err.name === "TypeMismatchError") {
 						callback(createFSError("EISDIR", dir));
 					} else {
-						callback(createFSError("UNKNOWN", dir));
+						callback(createFSError("UNKNOWN", dir, undefined, err.message));
 					}
 				});
 		}
@@ -155,7 +154,7 @@ export class FS {
 							} else if (err && err.name === "TypeMismatchError") {
 								callback(createFSError("EISDIR", dir), null);
 							} else {
-								callback(createFSError("UNKNOWN", dir), null);
+								callback(createFSError("UNKNOWN", dir, undefined, err.message), null);
 							}
 						});
 				}
@@ -167,7 +166,7 @@ export class FS {
 				} else if (err && err.name === "TypeMismatchError") {
 					callback(createFSError("EISDIR", dir), null);
 				} else {
-					callback(createFSError("UNKNOWN", dir), null);
+					callback(createFSError("UNKNOWN", dir, undefined, err.message), null);
 				}
 			});
 	}
@@ -209,18 +208,36 @@ export class FS {
 									}),
 								)
 								.catch(dirErr => {
-									if (err && err.name === "NotFoundError") {
+									if (dirErr && dirErr.name === "NotFoundError") {
 										callback(createFSError("ENOENT", path), null);
-									} else if (err && err.name === "TypeMismatchError") {
+									} else if (dirErr && dirErr.name === "TypeMismatchError") {
 										callback(createFSError("ENOTDIR", path), null);
 									} else {
-										callback(createFSError("UNKNOWN", path), null);
+										callback(createFSError("UNKNOWN", path, undefined, dirErr.message), null);
 									}
 								});
 						} else if (err && err.name === "TypeMismatchError") {
-							callback(createFSError("EISDIR", path), null);
+							dirHandle
+								.getDirectoryHandle(lastPart as string)
+								.then(() =>
+									callback(null, {
+										name: lastPart as string,
+										size: 0,
+										type: "directory",
+										lastModified: 0,
+									}),
+								)
+								.catch(dirErr => {
+									if (dirErr && dirErr.name === "NotFoundError") {
+										callback(createFSError("ENOENT", path), null);
+									} else if (dirErr && dirErr.name === "TypeMismatchError") {
+										callback(createFSError("ENOTDIR", path), null);
+									} else {
+										callback(createFSError("UNKNOWN", path, undefined, dirErr.message), null);
+									}
+								});
 						} else {
-							callback(createFSError("UNKNOWN", path), null);
+							callback(createFSError("UNKNOWN", path, undefined, err.message), null);
 						}
 					}),
 			)
@@ -230,7 +247,7 @@ export class FS {
 				} else if (err && err.name === "TypeMismatchError") {
 					callback(createFSError("ENOTDIR", path), null);
 				} else {
-					callback(createFSError("UNKNOWN", path), null);
+					callback(createFSError("UNKNOWN", path, undefined, err.message), null);
 				}
 			});
 	}
@@ -339,7 +356,7 @@ export class FS {
 				} else if (err && err.name === "TypeMismatchError") {
 					callback?.(createFSError("EISDIR", path));
 				} else {
-					callback?.(createFSError("UNKNOWN", path));
+					callback?.(createFSError("UNKNOWN", path, undefined, err.message));
 				}
 			});
 	}
@@ -355,11 +372,51 @@ export class FS {
 		});
 	}
 
-	rmdir(path: string, callback?: (err: Error | null) => void) {}
+	rmdir(path: string, callback?: (err: Error | null) => void) {
+		const normalizedPath = this.normalizePath(path);
+		const parts = normalizedPath.split("/").filter(Boolean);
+		let dirPromise: Promise<FileSystemDirectoryHandle> = Promise.resolve(this.handle);
+		for (let i = 0; i < parts.length - 1; i++) {
+			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(parts[i] as string));
+		}
+		const dirName = parts[parts.length - 1];
+		dirPromise
+			.then(dirHandle => {
+				return dirHandle.removeEntry(dirName as string);
+			})
+			.then(() => {
+				if (callback) callback(null);
+			})
+			.catch(err => {
+				if (err && err.name === "NotFoundError") {
+					callback?.(createFSError("ENOENT", path));
+				} else if (err && err.name === "TypeMismatchError") {
+					callback?.(createFSError("EISDIR", path));
+				} else {
+					callback?.(createFSError("UNKNOWN", path, undefined, err.message));
+				}
+			});
+	}
 
 	rename(oldPath: string, newPath: string, callback?: (err: Error | null) => void) {}
 
-	copyFile(oldPath: string, newPath: string, callback?: (err: Error | null) => void) {}
+	copyFile(oldPath: string, newPath: string, callback?: (err: Error | null) => void) {
+		const oldP = this.normalizePath(oldPath);
+		const newP = this.normalizePath(newPath);
+		this.readFile(oldP, "arraybuffer", (err, data) => {
+			if (err) {
+				if (err && err.name === "NotFoundError") {
+					callback?.(createFSError("ENOENT", oldPath));
+				} else if (err && err.name === "TypeMismatchError") {
+					callback?.(createFSError("EISDIR", oldPath));
+				} else {
+					callback?.(createFSError("UNKNOWN", oldPath, undefined, err.message));
+				}
+				return;
+			}
+			this.writeFile(newP, data, callback);
+		});
+	}
 
 	promises = {
 		writeFile: (file: string, content: string | ArrayBuffer | Blob) => {

@@ -30,7 +30,17 @@ const errnoMap: Record<string, number> = {
 	UNKNOWN: -1,
 };
 
-export function createFSError(code: keyof typeof FSErrors, path?: string, stack?: string) {
+export function createFSError(code: keyof typeof FSErrors, path?: string, stack?: string, errMSG?: string) {
+	if (code === "UNKNOWN" && errMSG) {
+		return {
+			name: "UNKNOWN",
+			code: errMSG,
+			errno: -1,
+			message: FSErrors[code],
+			path,
+			stack,
+		} as Error;
+	}
 	return {
 		name: code,
 		code,
