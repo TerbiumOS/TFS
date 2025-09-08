@@ -13,5 +13,6 @@ export declare enum FSErrors {
 	EIO = "i/o error",
 	UNKNOWN = "unknown error",
 }
-export declare function createFSError(code: keyof typeof FSErrors, path?: string, stack?: string, errMSG?: string): Error;
+export declare function createFSError(code: keyof typeof FSErrors, path?: string, errMSG?: string): Error;
+export declare function genError(err: any, path?: string): Error;
 //# sourceMappingURL=errors.d.ts.map

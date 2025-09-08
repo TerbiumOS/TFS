@@ -30,7 +30,7 @@ const errnoMap: Record<string, number> = {
 	UNKNOWN: -1,
 };
 
-export function createFSError(code: keyof typeof FSErrors, path?: string, stack?: string, errMSG?: string) {
+export function createFSError(code: keyof typeof FSErrors, path?: string, errMSG?: string) {
 	if (code === "UNKNOWN" && errMSG) {
 		return {
 			name: "UNKNOWN",
@@ -38,7 +38,6 @@ export function createFSError(code: keyof typeof FSErrors, path?: string, stack?
 			errno: -1,
 			message: FSErrors[code],
 			path,
-			stack,
 		} as Error;
 	}
 	return {
@@ -47,6 +46,15 @@ export function createFSError(code: keyof typeof FSErrors, path?: string, stack?
 		errno: errnoMap[code],
 		message: FSErrors[code],
 		path,
-		stack,
 	} as Error;
+}
+
+export function genError(err: any, path?: string) {
+	if (err && err.name === "NotFoundError") {
+		return createFSError("ENOENT", path);
+	} else if (err && err.name === "TypeMismatchError") {
+		return createFSError("EISDIR", path);
+	} else {
+		return createFSError("UNKNOWN", path, err.message);
+	}
 }
