@@ -22,7 +22,7 @@
 	],
 	"author": "TerbiumOS Development",
 	"license": "Apache-2.0",
-	"packageManager": "pnpm@10.13.1",
+	"packageManager": "pnpm@10.15.1",
 	"devDependencies": {
 		"@biomejs/biome": "^2.2.2",
 		"@rspack/cli": "^1.5.1",

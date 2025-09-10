@@ -341,6 +341,17 @@ export class FS {
 			});
 	}
 
+	exists(path: string, callback?: (exists: boolean) => void) {
+		const normalizedPath = this.normalizePath(path);
+		this.stat(normalizedPath, (err, _) => {
+			if (err) {
+				if (callback) callback(false);
+			} else {
+				if (callback) callback(true);
+			}
+		});
+	}
+
 	rmdir(path: string, callback?: (err: Error | null) => void) {}
 
 	rename(oldPath: string, newPath: string, callback?: (err: Error | null) => void) {}
@@ -412,6 +423,13 @@ export class FS {
 					} else {
 						resolve();
 					}
+				});
+			});
+		},
+		exists: (path: string) => {
+			return new Promise<boolean>(resolve => {
+				this.exists(path, exists => {
+					resolve(exists);
 				});
 			});
 		},
