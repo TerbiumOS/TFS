@@ -9,6 +9,10 @@ export default defineConfig({
 					src: "../dist/*",
 					dest: "dist",
 				},
+				{
+					src: "./node_modules/filer/dist/*",
+					dest: "filer",
+				},
 			],
 		}),
 	],

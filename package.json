@@ -4,6 +4,11 @@
 	"version": "1.0.0",
 	"description": "The drop in Filer replacement you have been waiting for. Completely Typed and Built with TypeScript",
 	"type": "module",
+	"types": "/src/index.d.ts",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/TerbiumOS/TFS"
+	},
 	"scripts": {
 		"dev": "rspack dev",
 		"build": "rspack build --configLoader=native",

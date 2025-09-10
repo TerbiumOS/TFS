@@ -13,6 +13,7 @@
 	"packageManager": "pnpm@10.15.1",
 	"dependencies": {
 		"@types/node": "^24.3.0",
+		"filer": "^1.4.1",
 		"tsx": "^4.20.5",
 		"vite": "^7.1.4",
 		"vite-plugin-static-copy": "^3.1.2"

@@ -5,14 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document</title>
     <script src="/dist/tfs.js"></script>
+    <script src="/filer/filer.min.js"></script>
     <script>
         (async () => {
             const { fs, path, shell, buffer } = await tfs.init()
             window.tfs = { fs, path, shell, buffer }
-        })()
+        })();
     </script>
 </head>
 <body>
     <h1>TFS Demo</h1>
+    <p>Open the devtools to debug</p>
 </body>
 </html>
