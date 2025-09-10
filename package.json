@@ -1,5 +1,5 @@
 {
-	"name": "tfs",
+	"name": "@terbiumos/tfs",
 	"displayName": "TFS",
 	"version": "1.0.0",
 	"description": "The drop in Filer replacement you have been waiting for. Completely Typed and Built with TypeScript",
@@ -14,9 +14,9 @@
 		"build": "rspack build --configLoader=native",
 		"check": "biome check . --write",
 		"fmt": "biome format --write .",
-		"test": "cd demo; npm run test",
-		"test:install": "cd demo; npm i; npm run test",
-		"ci": "cd demo; npm i; cd ../; npm run build"
+		"test": "cd ./demo && npm run test",
+		"test:install": "cd ./demo && npm i && npm run test",
+		"ci": "cd ./demo && npm i && cd ../ && npm run build"
 	},
 	"keywords": [
 		"fs",
@@ -35,7 +35,6 @@
 		"@rspack/cli": "^1.5.1",
 		"@rspack/core": "^1.5.1",
 		"buffer": "^6.0.3",
-		"ts-loader": "^9.5.4",
 		"typescript": "^5.9.2"
 	}
 }
