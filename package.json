@@ -14,7 +14,9 @@
 		"build": "rspack build --configLoader=native",
 		"check": "biome check . --write",
 		"fmt": "biome format --write .",
-		"test": "cd demo; npm run test"
+		"test": "cd demo; npm run test",
+		"test:install": "cd demo; npm i; npm run test",
+		"ci": "cd demo; npm i; cd ../; npm run build"
 	},
 	"keywords": [
 		"fs",
