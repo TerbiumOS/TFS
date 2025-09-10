@@ -325,7 +325,48 @@ export class FS {
 			});
 	}
 
-	rename(oldPath: string, newPath: string, callback?: (err: Error | null) => void) {}
+	rename(oldPath: string, newPath: string, callback?: (err: Error | null) => void) {
+		const oldP = this.normalizePath(oldPath);
+		const newP = this.normalizePath(newPath);
+		this.stat(oldP, (err, stats) => {
+			if (err || !stats) {
+				if (callback) callback(genError(err, oldP));
+				return;
+			}
+			if (stats.type === "directory") {
+				this.mkdir(newP, err => {
+					if (err) {
+						if (callback) callback(genError(err, newP));
+					} else {
+						this.readdir(oldP, (err, entries) => {
+							if (err) {
+								if (callback) callback(genError(err, oldP));
+							} else {
+								// TODO: Make this recursively delete the dir if its not empty
+								Promise.all(entries.map((entry: string) => this.promises.rename(oldP + "/" + entry, newP + "/" + entry)))
+									.then(() => this.promises.rmdir(oldP))
+									.then(() => {
+										if (callback) callback(null);
+									})
+									.catch(err => {
+										if (callback) callback(genError(err, oldPath));
+									});
+							}
+						});
+					}
+				});
+			} else {
+				return this.copyFile(oldP, newP, err => {
+					if (err) {
+						if (callback) callback(genError(err, oldPath));
+					} else {
+						if (callback) callback(null);
+						this.unlink(oldP);
+					}
+				});
+			}
+		});
+	}
 
 	copyFile(oldPath: string, newPath: string, callback?: (err: Error | null) => void) {
 		const oldP = this.normalizePath(oldPath);
