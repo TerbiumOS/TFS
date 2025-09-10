@@ -8,12 +8,12 @@ export default defineConfig({
 		rules: [
 			{
 				test: /\.ts$/,
+				include: /src/,
 				use: [
 					{
 						loader: "ts-loader",
 					},
 				],
-				exclude: [/node_modules/, /demo/],
 			},
 		],
 	},
