@@ -44,9 +44,9 @@ export declare class FS {
 		close: () => void;
 	};
 	unlink(path: string, callback?: (err: Error | null) => void): void;
-	exists(path: string, callback?: (exists: boolean) => void): void;
 	rmdir(path: string, callback?: (err: Error | null) => void): void;
 	rename(oldPath: string, newPath: string, callback?: (err: Error | null) => void): void;
+	exists(path: string, callback?: (exists: boolean) => void): void;
 	copyFile(oldPath: string, newPath: string, callback?: (err: Error | null) => void): void;
 	promises: {
 		writeFile: (file: string, content: string | ArrayBuffer | Blob) => Promise<void>;

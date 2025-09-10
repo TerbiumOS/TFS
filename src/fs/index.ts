@@ -368,6 +368,17 @@ export class FS {
 		});
 	}
 
+	exists(path: string, callback?: (exists: boolean) => void) {
+		const normalizedPath = this.normalizePath(path);
+		this.stat(normalizedPath, (err, _) => {
+			if (err) {
+				if (callback) callback(false);
+			} else {
+				if (callback) callback(true);
+			}
+		});
+	}
+
 	copyFile(oldPath: string, newPath: string, callback?: (err: Error | null) => void) {
 		const oldP = this.normalizePath(oldPath);
 		const newP = this.normalizePath(newPath);
