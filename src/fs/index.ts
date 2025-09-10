@@ -1,12 +1,15 @@
+import { Shell } from "../shell";
 import { createFSError } from "./errors";
 
 export class FS {
 	handle: FileSystemDirectoryHandle;
 	currPath: string;
+	shell: Shell;
 
 	constructor(handle: FileSystemDirectoryHandle) {
 		this.handle = handle;
 		this.currPath = "/";
+		this.shell = new Shell(this.handle, this);
 	}
 
 	normalizePath(path: string, currPath?: string): string {

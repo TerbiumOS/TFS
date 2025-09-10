@@ -8,19 +8,30 @@ export class Shell {
 	private fs: FS;
 	private path: Path;
 
-	constructor(handle: FileSystemDirectoryHandle) {
+	constructor(handle: FileSystemDirectoryHandle, fs?: FS) {
 		this.handle = handle;
 		this.cwd = "/";
-		this.fs = new FS(this.handle);
+		this.fs = fs || new FS(this.handle);
 		this.path = new Path();
 	}
 
-	async cd(path: string): Promise<void> {
+	cd(path: string) {
 		const newPath = this.path.join(this.cwd, path);
-		if (await this.fs.promises.exists(newPath)) {
-			this.cwd = newPath;
-		} else {
-			throw createFSError("ENOENT", `No such file or directory: ${newPath}`);
+		this.fs.exists(newPath, (exists) => {
+			if (exists) {
+				this.cwd = newPath;
+			} else {
+				throw createFSError("ENOENT", `No such file or directory: ${newPath}`);
+			}
+		});
+	}
+
+	promises = {
+		cd: (path: string): Promise<void> => {
+			return new Promise(resolve => {
+				this.cd(path);
+				resolve();
+			});
 		}
 	}
 }
