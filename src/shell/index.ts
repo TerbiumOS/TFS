@@ -17,7 +17,7 @@ export class Shell {
 
 	cd(path: string) {
 		const newPath = this.path.join(this.cwd, path);
-		this.fs.exists(newPath, (exists) => {
+		this.fs.exists(newPath, exists => {
 			if (exists) {
 				this.cwd = newPath;
 			} else {
@@ -32,6 +32,6 @@ export class Shell {
 				this.cd(path);
 				resolve();
 			});
-		}
-	}
+		},
+	};
 }
