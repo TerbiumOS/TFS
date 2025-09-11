@@ -10,6 +10,9 @@ declare global {
 	}
 }
 
+/**
+ * The TFS File System Library
+ */
 export class TFS {
 	handle: FileSystemDirectoryHandle;
 	fs: FS;
@@ -25,6 +28,10 @@ export class TFS {
 		this.shell = new Shell(this.handle);
 	}
 
+	/**
+	 * Creates a new instance of TFS
+	 * @returns {Promise<TFS>} Instance of TFS
+	 */
 	static async init(): Promise<TFS> {
 		const handle = await navigator.storage.getDirectory();
 		return new TFS(handle);

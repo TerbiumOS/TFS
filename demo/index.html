@@ -8,8 +8,8 @@
     <script src="/filer/filer.min.js"></script>
     <script>
         (async () => {
-            const { fs, path, shell, buffer } = await tfs.init()
-            window.tfs = { fs, path, shell, buffer }
+            const obj = await tfs.init()
+            window.tfs = obj
         })();
     </script>
 </head>

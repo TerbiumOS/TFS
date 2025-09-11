@@ -1,6 +1,9 @@
 import { Shell } from "../shell";
 import { genError } from "./errors";
 
+/**
+ * The TFS File System Operations Class
+ */
 export class FS {
 	handle: FileSystemDirectoryHandle;
 	currPath: string;

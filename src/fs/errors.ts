@@ -30,6 +30,12 @@ const errnoMap: Record<string, number> = {
 	UNKNOWN: -1,
 };
 
+/**
+ * Generates an instance of FSError
+ * @param {keyof typeof FSErrors} code The Error Code
+ * @param {string} path The path of the requested File Operation
+ * @param {string} errMSG The original error message (if Error type is unknown)
+ */
 export function createFSError(code: keyof typeof FSErrors, path?: string, errMSG?: string) {
 	if (code === "UNKNOWN" && errMSG) {
 		return {
@@ -49,6 +55,11 @@ export function createFSError(code: keyof typeof FSErrors, path?: string, errMSG
 	} as Error;
 }
 
+/**
+ * Generates an instance of FSError
+ * @param {any} err The original error message
+ * @param {string} path The path of the requested File Operation
+ */
 export function genError(err: any, path?: string) {
 	if (err && err.name === "NotFoundError") {
 		return createFSError("ENOENT", path);

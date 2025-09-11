@@ -12,7 +12,7 @@ The Buffer utility is actually the same as Filer and is powered by the [Ferros B
 To load TFS, simply run:
 
 ```js
-await tfs.init()
+const tfs = await tfs.init()
 ```
 
 If you need a specific module from TFS, you can desctructure the object for the one that you need

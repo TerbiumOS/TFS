@@ -1,3 +1,6 @@
+/**
+ * The TFS Path Operations Class
+ */
 export class Path {
 	sep: string = "/";
 	delimiter: string = ":";
