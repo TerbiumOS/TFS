@@ -15,6 +15,13 @@ export class FS {
 		this.shell = new Shell(this.handle, this);
 	}
 
+	/**
+	 * Normalizes the given path, resolving relative segments like "." and "..".
+	 * If `currPath` is provided, it is used as the base for relative paths.
+	 * @param path - The absolute or relative path to normalize.
+	 * @param currPath - (Optional) The current working directory to resolve relative paths against.
+	 * @returns The normalized absolute path as a string.
+	 */
 	normalizePath(path: string, currPath?: string): string {
 		if (currPath) this.currPath = currPath;
 		if (!path) return this.currPath;
@@ -38,6 +45,12 @@ export class FS {
 		return newPath;
 	}
 
+	/**
+	 * Writes data to a file at the specified path. If the file or any parent directories do not exist, they are created.
+	 * @param file - The absolute or relative path to the file to write.
+	 * @param content - The content to write to the file. Can be a string, ArrayBuffer, or Blob.
+	 * @param callback - Optional callback function called when the operation completes. Receives an error if one occurs, or null on success.
+	 */
 	writeFile(file: string, content: string | ArrayBuffer | Blob, callback?: (err: Error | null) => void) {
 		const normalizedPath = this.normalizePath(file);
 		const parts = normalizedPath.split("/").filter(Boolean);
@@ -60,6 +73,12 @@ export class FS {
 			});
 	}
 
+	/**
+	 * Reads the contents of a file at the specified path.
+	 * @param file - The absolute or relative path to the file to read.
+	 * @param type - The type of data to return: "utf8" for string, "arraybuffer" for ArrayBuffer, "blob" for Blob, or "base64" for a base64-encoded string.
+	 * @param callback - Callback function called with the result. Receives an error (or null) and the file data.
+	 */
 	readFile(file: string, type: "utf8" | "arraybuffer" | "blob" | "base64", callback: (err: Error | null, data: any) => void) {
 		const normalizedPath = this.normalizePath(file);
 		const parts = normalizedPath.split("/").filter(Boolean);
@@ -92,6 +111,11 @@ export class FS {
 			});
 	}
 
+	/**
+	 * Creates a directory at the specified path
+	 * @param dir - The absolute or relative path of the directory to create.
+	 * @param callback - Optional callback function called when the operation completes. Receives an error if one occurs, or null on success.
+	 */
 	mkdir(dir: string, callback?: (err: Error | null) => void) {
 		const normalizedPath = this.normalizePath(dir);
 		const parts = normalizedPath.split("/").filter(Boolean);
@@ -109,6 +133,12 @@ export class FS {
 		}
 	}
 
+	/**
+	 * Reads the contents of a directory.
+	 * @param dir - The absolute or relative path of the directory to read.
+	 * @param callback - Callback function called with the result. Receives an error (or null) and the directory contents.
+	 * @returns An array of file and directory names in the specified directory.
+	 */
 	readdir(dir: string, callback: (err: Error | null, data: any) => void) {
 		const normalizedPath = this.normalizePath(dir);
 		const parts = normalizedPath.split("/").filter(Boolean);
@@ -144,6 +174,12 @@ export class FS {
 			});
 	}
 
+	/**
+	 * Retrieves information about a file or directory.
+	 * @param path - The absolute or relative path of the file or directory to retrieve information for.
+	 * @param callback - Callback function called with the result. Receives an error (or null) and the file/directory information.
+	 * @returns An object containing the name, size, mime type of the file or just as directory, and lastModified timestamp.
+	 */
 	stat(path: string, callback: (err: Error | null, stats?: { name: string; size: number; type: string; lastModified: number } | null) => void) {
 		const normalizedPath = this.normalizePath(path);
 		const parts = normalizedPath.split("/").filter(Boolean);
@@ -205,10 +241,23 @@ export class FS {
 			});
 	}
 
+	/**
+	 * Retrieves information about a symlink or file/directory.
+	 * @param path - The absolute or relative path of the symlink or file/directory to retrieve information for.
+	 * @param callback - Callback function called with the result. Receives an error (or null) and the file/directory information.
+	 * @returns An object containing the name, size, mime type of the file or just as directory, and lastModified timestamp.
+	 */
 	lstat(path: string, callback: (err: Error | null, stats?: { name: string; size: number; type: string; lastModified: number } | null) => void) {
 		this.stat(path, callback);
 	}
 
+	/**
+	 * Watches for changes to a file or directory.
+	 * @param path - The absolute or relative path of the file or directory to watch.
+	 * @param options - Options for the watcher (e.g., recursive).
+	 * @param listener - Callback function called when a change is detected.
+	 * @returns An object representing the watcher.
+	 */
 	watch(path: string, options?: { recursive?: boolean }, listener?: (event: "rename" | "change", filename: string) => void) {
 		const normalizedPath = this.normalizePath(path);
 		let closed = false;
@@ -288,6 +337,11 @@ export class FS {
 		return watcher;
 	}
 
+	/**
+	 * Deletes a file.
+	 * @param path - The absolute or relative path of the file to delete.
+	 * @param callback - Callback function called with the result. Receives an error (or null) if the deletion failed.
+	 */
 	unlink(path: string, callback?: (err: Error | null) => void) {
 		const normalizedPath = this.normalizePath(path);
 		const parts = normalizedPath.split("/").filter(Boolean);
@@ -308,6 +362,11 @@ export class FS {
 			});
 	}
 
+	/**
+	 * Deletes an empty directory.
+	 * @param path - The absolute or relative path of the directory to delete.
+	 * @param callback - Callback function called with the result. Receives an error (or null) if the deletion failed.
+	 */
 	rmdir(path: string, callback?: (err: Error | null) => void) {
 		const normalizedPath = this.normalizePath(path);
 		const parts = normalizedPath.split("/").filter(Boolean);
@@ -328,6 +387,12 @@ export class FS {
 			});
 	}
 
+	/**
+	 * Renames a file or directory.
+	 * @param oldPath - The absolute or relative path of the file or directory to rename.
+	 * @param newPath - The new absolute or relative path for the file or directory.
+	 * @param callback - Callback function called with the result. Receives an error (or null) if the rename failed.
+	 */
 	rename(oldPath: string, newPath: string, callback?: (err: Error | null) => void) {
 		const oldP = this.normalizePath(oldPath);
 		const newP = this.normalizePath(newPath);
@@ -371,6 +436,12 @@ export class FS {
 		});
 	}
 
+	/**
+	 * Checks if a file or directory exists at the specified path.
+	 * @param path - The absolute or relative path to check for existence.
+	 * @param callback - Optional callback function called with the result. Receives true if the file/directory exists, false otherwise.
+	 * @returns True if the file or directory exists, false otherwise.
+	 */
 	exists(path: string, callback?: (exists: boolean) => void) {
 		const normalizedPath = this.normalizePath(path);
 		this.stat(normalizedPath, (err, _) => {
@@ -382,6 +453,12 @@ export class FS {
 		});
 	}
 
+	/**
+	 * Copies a file from one path to another.
+	 * @param oldPath - The absolute or relative path of the file to copy.
+	 * @param newPath - The absolute or relative path where the file should be copied to.
+	 * @param callback - Optional callback function called when the operation completes. Receives an error if one occurs, or null on success.
+	 */
 	copyFile(oldPath: string, newPath: string, callback?: (err: Error | null) => void) {
 		const oldP = this.normalizePath(oldPath);
 		const newP = this.normalizePath(newPath);

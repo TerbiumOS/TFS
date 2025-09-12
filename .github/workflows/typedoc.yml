@@ -1,0 +1,38 @@
+name: Deploy TypeDoc on GitHub pages
+
+on:
+    push:
+        branches:
+            - main
+  
+jobs:
+  deploy:
+    concurrency: ci-${{ github.ref }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 'lts/*'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: npm i
+
+      - name: Build TFS
+        run:  npm run ci
+
+      - name: Build documentation
+        run:  npx typedoc
+
+      - name: Deploy to GitHub pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          folder: docs
+          clean: true
