@@ -43,6 +43,12 @@ Also, Please make sure that the CI passes before you create your PR as it makes 
 
 ## Credits
 
+Libraries Used
+
+[Ferros Buffer Library](https://github.com/feross/buffer) - MIT License
+
+[Minimatch](https://github.com/isaacs/minimatch) - ISC License
+
 Made with ❤️ By the Terbium Development Team
 
 &copy; Copyright 2025 TerbiumOS Development

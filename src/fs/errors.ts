@@ -11,6 +11,7 @@ export enum FSErrors {
 	ELOOP = "too many symbolic links encountered",
 	ENOTEMPTY = "directory not empty",
 	EIO = "i/o error",
+	ENOSPC = "no space left on device",
 	UNKNOWN = "unknown error",
 }
 
@@ -27,6 +28,7 @@ const errnoMap: Record<string, number> = {
 	ELOOP: 40,
 	ENOTEMPTY: 39,
 	EIO: 5,
+	ENOSPC: 28,
 	UNKNOWN: -1,
 };
 
@@ -65,7 +67,19 @@ export function genError(err: any, path?: string) {
 		return createFSError("ENOENT", path);
 	} else if (err && err.name === "TypeMismatchError") {
 		return createFSError("EISDIR", path);
+	} else if (err && err.name === "NoModificationAllowedError") {
+		return createFSError("EPERM", path);
+	} else if (err && err.name === "QuotaExceededError") {
+		return createFSError("ENOSPC", path);
+	} else if (err && err.name === "SecurityError") {
+		return createFSError("EACCES", path);
+	} else if (err && err.name === "InvalidModificationError") {
+		return createFSError("EEXIST", path);
+	} else if (err && err.name === "NotReadableError") {
+		return createFSError("EIO", path);
+	} else if (err && err.name === "DirectoryNotEmptyError") {
+		return createFSError("ENOTEMPTY", path);
 	} else {
-		return createFSError("UNKNOWN", path, err.message);
+		return createFSError("UNKNOWN", path, err && err.message);
 	}
 }
