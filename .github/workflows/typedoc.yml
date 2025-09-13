@@ -27,7 +27,7 @@ jobs:
         run:  npm run ci
 
       - name: Build documentation
-        run:  npx typedoc
+        run: npx typedoc --options typedoc.json
 
       - name: Deploy to GitHub pages
         uses: JamesIves/github-pages-deploy-action@v4

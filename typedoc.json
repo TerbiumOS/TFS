@@ -1,0 +1,10 @@
+{
+    "$schema": "https://typedoc.org/schema.json",
+    "include": [
+        "src/**/*"
+    ],
+    "exclude": [
+        "**/*.d.ts"
+    ],
+    "out": "./docs"
+}
