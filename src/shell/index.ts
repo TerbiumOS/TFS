@@ -4,7 +4,7 @@ import { FS } from "../fs/index";
 import { minimatch } from "minimatch";
 
 /**
- * A simple shell-like interface for navigating and manipulating the file system.
+ * The TFS Shell Operations Class
  */
 export class Shell {
 	handle: FileSystemDirectoryHandle;
