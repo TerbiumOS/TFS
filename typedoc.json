@@ -1,6 +1,6 @@
 {
 	"$schema": "https://typedoc.org/schema.json",
-	"entryPoints": ["./README.md", "./src/index.ts"],
+	"entryPoints": ["./README.md", "./src/index.ts", "./src/fs/index.ts", "./src/fs/errors.ts", "./src/path/index.ts", "./src/shell/index.ts"],
 	"exclude": ["**/*.d.ts"],
 	"out": "./docs"
 }
