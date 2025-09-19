@@ -105,20 +105,36 @@ export class FS {
 			.then(dirHandle => dirHandle.getFileHandle(fileName as string))
 			.then(fileHandle => fileHandle.getFile())
 			.then(file => {
-				if (type === "arraybuffer") {
-					return file.arrayBuffer().then(data => callback(null, data));
-				} else if (type === "blob") {
-					callback(null, file);
-					return;
-				} else if (type === "base64") {
-					const reader = new FileReader();
-					reader.onload = () => {
-						callback(null, reader.result);
-					};
-					reader.readAsDataURL(file);
-					return;
-				}
-				file.text().then(data => callback(null, data));
+				file.text()
+					.then(text => {
+						const isSymlink = /^symlink:(.+?):(file|dir|junction)$/.exec(text);
+						if (isSymlink) {
+							const target = isSymlink[1];
+							const linkType = isSymlink[2];
+							if (linkType === "file") {
+								this.readFile(target as string, type, callback);
+							} else {
+								callback(genError(new Error("TypeMismatchError"), file.name), null);
+							}
+							return;
+						}
+						if (type === "arraybuffer") {
+							file.arrayBuffer().then(data => callback(null, data));
+						} else if (type === "blob") {
+							callback(null, file);
+						} else if (type === "base64") {
+							const reader = new FileReader();
+							reader.onload = () => {
+								callback(null, reader.result);
+							};
+							reader.readAsDataURL(file);
+						} else {
+							callback(null, text);
+						}
+					})
+					.catch(err => {
+						callback(genError(err, file.name), null);
+					});
 			})
 			.catch(err => {
 				callback(genError(err, file), null);
@@ -167,11 +183,9 @@ export class FS {
 		const normalizedPath = this.normalizePath(dir);
 		const parts = normalizedPath.split("/").filter(Boolean);
 		let dirPromise = Promise.resolve(this.handle);
-
 		for (const part of parts) {
 			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(part));
 		}
-
 		dirPromise
 			.then(dirHandle => {
 				const entries: string[] = [];
@@ -210,6 +224,95 @@ export class FS {
 	 * });
 	 */
 	stat(path: string, callback: (err: Error | null, stats?: { name: string; size: number; type: string; lastModified: number } | null) => void) {
+		const normalizedPath = this.normalizePath(path);
+		const parts = normalizedPath.split("/").filter(Boolean);
+		let dirPromise = Promise.resolve(this.handle);
+		for (let i = 0; i < parts.length - 1; i++) {
+			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(parts[i] as string));
+		}
+		const lastPart = parts[parts.length - 1];
+		dirPromise
+			.then(dirHandle =>
+				dirHandle
+					.getFileHandle(lastPart as string)
+					.then(fileHandle =>
+						fileHandle.getFile().then(file =>
+							file.text().then(text => {
+								const isSymlink = /^symlink:(.+?):(file|dir|junction)$/.exec(text);
+								if (isSymlink) {
+									const target = isSymlink[1];
+									this.stat(target as string, (err, stats) => {
+										if (err) {
+											callback(genError(err, target), null);
+										} else if (stats) {
+											callback(null, {
+												...stats,
+												type: "application/symlink",
+											});
+										}
+									});
+								} else {
+									callback(null, {
+										name: file.name,
+										size: file.size,
+										type: file.type,
+										lastModified: file.lastModified,
+									});
+								}
+							}),
+						),
+					)
+					.catch(err => {
+						if (err && err.name === "NotFoundError") {
+							dirHandle
+								.getDirectoryHandle(lastPart as string)
+								.then(() =>
+									callback(null, {
+										name: lastPart as string,
+										size: 0,
+										type: "directory",
+										lastModified: 0,
+									}),
+								)
+								.catch(dirErr => {
+									callback(genError(dirErr, path), null);
+								});
+						} else if (err && err.name === "TypeMismatchError") {
+							dirHandle
+								.getDirectoryHandle(lastPart as string)
+								.then(() =>
+									callback(null, {
+										name: lastPart as string,
+										size: 0,
+										type: "directory",
+										lastModified: 0,
+									}),
+								)
+								.catch(dirErr => {
+									callback(genError(dirErr, path), null);
+								});
+						} else {
+							callback(genError(err, path), null);
+						}
+					}),
+			)
+			.catch(err => {
+				callback(genError(err, path), null);
+			});
+	}
+
+	/**
+	 * Retrieves information about a symlink or file/directory.
+	 * @param path - The absolute or relative path of the symlink or file/directory to retrieve information for.
+	 * @param callback - Callback function called with the result. Receives an error (or null) and the file/directory information.
+	 * @returns An object containing the name, size, mime type of the file or just as directory, and lastModified timestamp.
+	 * @example
+	 * tfs.fs.lstat("/documents/file.txt", (err, stats) => {
+	 *   if (err) throw err;
+	 *   console.log(stats);
+	 * });
+	 */
+	lstat(path: string, callback: (err: Error | null, stats?: { name: string; size: number; type: string; lastModified: number } | null) => void) {
 		const normalizedPath = this.normalizePath(path);
 		const parts = normalizedPath.split("/").filter(Boolean);
 		let dirPromise = Promise.resolve(this.handle);
@@ -268,21 +371,6 @@ export class FS {
 			.catch(err => {
 				callback(genError(err, path), null);
 			});
-	}
-
-	/**
-	 * Retrieves information about a symlink or file/directory.
-	 * @param path - The absolute or relative path of the symlink or file/directory to retrieve information for.
-	 * @param callback - Callback function called with the result. Receives an error (or null) and the file/directory information.
-	 * @returns An object containing the name, size, mime type of the file or just as directory, and lastModified timestamp.
-	 * @example
-	 * tfs.fs.lstat("/documents/file.txt", (err, stats) => {
-	 *   if (err) throw err;
-	 *   console.log(stats);
-	 * });
-	 */
-	lstat(path: string, callback: (err: Error | null, stats?: { name: string; size: number; type: string; lastModified: number } | null) => void) {
-		this.stat(path, callback);
 	}
 
 	/**
@@ -474,7 +562,7 @@ export class FS {
 							} else {
 								// TODO: Make this recursively delete the dir if its not empty
 								Promise.all(entries.map((entry: string) => this.promises.rename(oldP + "/" + entry, newP + "/" + entry)))
-									.then(() => this.promises.rmdir(oldP))
+									.then(() => this.shell.promises.rm(oldP, { recursive: true }))
 									.then(() => {
 										if (callback) callback(null);
 									})
@@ -515,6 +603,24 @@ export class FS {
 				if (callback) callback(false);
 			} else {
 				if (callback) callback(true);
+			}
+		});
+	}
+
+	/**
+	 * Creates a symbolic link.
+	 * @param target - The target path the symlink points to.
+	 * @param path - The absolute or relative path where the symlink should be created.
+	 * @param type - (Optional) The type of the symlink: "file", "dir", or "junction". Defaults to "file".
+	 * @param callback - Optional callback function called when the operation completes. Receives an error if one occurs, or null on success.
+	 */
+	symlink(target: string, path: string, type?: "file" | "dir" | "junction", callback?: (err: Error | null) => void) {
+		const symlinkType = type || "file";
+		this.writeFile(path, `symlink:${target}:${symlinkType}`, (err: Error | null) => {
+			if (err) {
+				if (callback) callback(genError(err, path));
+			} else {
+				if (callback) callback(null);
 			}
 		});
 	}
@@ -720,6 +826,26 @@ export class FS {
 		copyFile: (oldPath: string, newPath: string) => {
 			return new Promise<void>((resolve, reject) => {
 				this.copyFile(oldPath, newPath, err => {
+					if (err) {
+						reject(err);
+					} else {
+						resolve();
+					}
+				});
+			});
+		},
+		/**
+		 * Creates a symbolic link.
+		 * @param target - The target path the symlink points to.
+		 * @param path - The absolute or relative path where the symlink should be created.
+		 * @param type - (Optional) The type of the symlink: "file", "dir", or "junction". Defaults to "file".
+		 * @returns A promise that resolves when the symlink has been created.
+		 * @example
+		 * await tfs.fs.promises.symlink("/documents/target.txt", "/documents/symlink.txt", "file");
+		 */
+		symlink: (target: string, path: string, type?: "file" | "dir" | "junction") => {
+			return new Promise<void>((resolve, reject) => {
+				this.symlink(target, path, type, err => {
 					if (err) {
 						reject(err);
 					} else {

@@ -459,9 +459,9 @@ export class Shell {
 		 * await tfs.shell.promises.rm('/documents/oldfile.txt');
 		 * await tfs.shell.promises.rm('/documents/fulldir', { recursive: true });
 		 */
-		rm: (path: string, options: { recursive: boolean }): Promise<void> => {
+		rm: (path: string, options?: { recursive: boolean }): Promise<void> => {
 			return new Promise((resolve, reject) => {
-				this.rm(path, options, err => {
+				this.rm(path, options!, err => {
 					if (err) {
 						reject(err);
 					} else {
