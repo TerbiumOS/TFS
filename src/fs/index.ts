@@ -645,6 +645,59 @@ export class FS {
 		});
 	}
 
+	/**
+	 * Copies a file or directory to a new location.
+	 * @param oldPath - The absolute or relative path of the file or directory to copy.
+	 * @param newPath - The absolute or relative path where the file or directory should be copied to.
+	 * @param callback - Optional callback function called when the operation completes. Receives an error if one occurs, or null on success.
+	 * @example
+	 * tfs.fs.cp("/documents/sourceFolder", "/documents/destinationFolder", (err) => {
+	 *   if (err) throw err;
+	 *   console.log("Directory copied successfully!");
+	 * });
+	 */
+	cp(oldPath: string, newPath: string, callback?: (err: Error | null) => void) {
+		this.stat(oldPath, (err, stats) => {
+			if (err || !stats) {
+				if (callback) callback(genError(err, oldPath));
+				return;
+			}
+			if (stats.type === "directory") {
+				this.mkdir(newPath, err => {
+					if (err) {
+						if (callback) callback(genError(err, newPath));
+						return;
+					}
+					this.readdir(oldPath, (err, entries) => {
+						if (err) {
+							if (callback) callback(genError(err, oldPath));
+							return;
+						}
+						let pending = entries.length;
+						if (!pending) {
+							if (callback) callback(null);
+							return;
+						}
+						let errorOccurred = false;
+						entries.forEach((entry: string) => {
+							this.cp(this.normalizePath(oldPath + "/" + entry), this.normalizePath(newPath + "/" + entry), err => {
+								if (errorOccurred) return;
+								if (err) {
+									errorOccurred = true;
+									if (callback) callback(genError(err, oldPath + "/" + entry));
+									return;
+								}
+								if (!--pending && callback) callback(null);
+							});
+						});
+					});
+				});
+			} else {
+				this.copyFile(oldPath, newPath, callback);
+			}
+		});
+	}
+
 	promises = {
 		/**
 		 * Writes data to a file.
@@ -846,6 +899,25 @@ export class FS {
 		symlink: (target: string, path: string, type?: "file" | "dir" | "junction") => {
 			return new Promise<void>((resolve, reject) => {
 				this.symlink(target, path, type, err => {
+					if (err) {
+						reject(err);
+					} else {
+						resolve();
+					}
+				});
+			});
+		},
+		/**
+		 * Copies a file or directory.
+		 * @param oldPath - The absolute or relative path of the file or directory to copy.
+		 * @param newPath - The absolute or relative path where the file or directory should be copied to.
+		 * @returns A promise that resolves when the file or directory has been copied.
+		 * @example
+		 * await tfs.fs.promises.cp("/documents/sourceFolder", "/documents/destinationFolder");
+		 */
+		cp: (oldPath: string, newPath: string) => {
+			return new Promise<void>((resolve, reject) => {
+				this.cp(oldPath, newPath, err => {
 					if (err) {
 						reject(err);
 					} else {
