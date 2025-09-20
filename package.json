@@ -27,6 +27,14 @@
 		"browser-fs",
 		"opfs"
 	],
+	"files": [
+		"dist",
+		"lib",
+		"src/**/*.d.ts",
+		"README.md",
+		"LICENSE",
+		"package.json"
+	],
 	"author": "TerbiumOS Development",
 	"license": "Apache-2.0",
 	"packageManager": "pnpm@10.15.1",
@@ -34,10 +42,10 @@
 		"@biomejs/biome": "^2.2.2",
 		"@rspack/cli": "^1.5.1",
 		"@rspack/core": "^1.5.1",
-		"buffer": "^6.0.3",
 		"typescript": "^5.9.2"
 	},
 	"dependencies": {
-		"minimatch": "^10.0.3"
+		"minimatch": "^10.0.3",
+		"buffer": "^6.0.3"
 	}
 }
