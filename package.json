@@ -37,7 +37,7 @@
 	],
 	"exports": {
 		".": {
-			"import": "./lib/index.d.ts",
+			"import": "./lib/index.cjs",
 			"types": "./lib/index.d.ts"
 		}
 	},
