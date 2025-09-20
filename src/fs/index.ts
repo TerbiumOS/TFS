@@ -216,14 +216,14 @@ export class FS {
 	 * Retrieves information about a file or directory.
 	 * @param path - The absolute or relative path of the file or directory to retrieve information for.
 	 * @param callback - Callback function called with the result. Receives an error (or null) and the file/directory information.
-	 * @returns An object containing the name, size, mime type of the file or just as directory, and lastModified timestamp.
+	 * @returns An object containing the name, size, mime type of the file or just as directory, lastModified timestamp and also the methods: isSymbolicLink, isDirectory, isFile which return booleans.
 	 * @example
 	 * tfs.fs.stat("/documents/file.txt", (err, stats) => {
 	 *   if (err) throw err;
 	 *   console.log(stats);
 	 * });
 	 */
-	stat(path: string, callback: (err: Error | null, stats?: { name: string; size: number; type: string; lastModified: number } | null) => void) {
+	stat(path: string, callback: (err: Error | null, stats?: { name: string; size: number; type: string; lastModified: number; isSymbolicLink: () => boolean; isDirectory: () => boolean; isFile: () => boolean; } | null) => void) {
 		const normalizedPath = this.normalizePath(path);
 		const parts = normalizedPath.split("/").filter(Boolean);
 		let dirPromise = Promise.resolve(this.handle);
@@ -248,6 +248,9 @@ export class FS {
 											callback(null, {
 												...stats,
 												type: "application/symlink",
+												isSymbolicLink: () => true,
+												isDirectory: () => stats.type === "directory",
+												isFile: () => stats.type !== "directory",
 											});
 										}
 									});
@@ -257,6 +260,9 @@ export class FS {
 										size: file.size,
 										type: file.type,
 										lastModified: file.lastModified,
+										isSymbolicLink: () => false,
+										isDirectory: () => file.type === "directory",
+										isFile: () => file.type !== "directory",
 									});
 								}
 							}),
@@ -272,6 +278,9 @@ export class FS {
 										size: 0,
 										type: "directory",
 										lastModified: 0,
+										isSymbolicLink: () => false,
+										isDirectory: () => true,
+										isFile: () => false,
 									}),
 								)
 								.catch(dirErr => {
@@ -286,6 +295,9 @@ export class FS {
 										size: 0,
 										type: "directory",
 										lastModified: 0,
+										isSymbolicLink: () => false,
+										isDirectory: () => true,
+										isFile: () => false,
 									}),
 								)
 								.catch(dirErr => {
@@ -305,14 +317,14 @@ export class FS {
 	 * Retrieves information about a symlink or file/directory.
 	 * @param path - The absolute or relative path of the symlink or file/directory to retrieve information for.
 	 * @param callback - Callback function called with the result. Receives an error (or null) and the file/directory information.
-	 * @returns An object containing the name, size, mime type of the file or just as directory, and lastModified timestamp.
+	 * @returns An object containing the name, size, mime type of the file or just as directory, lastModified timestamp and also the methods: isSymbolicLink, isDirectory, isFile which return booleans.
 	 * @example
 	 * tfs.fs.lstat("/documents/file.txt", (err, stats) => {
 	 *   if (err) throw err;
 	 *   console.log(stats);
 	 * });
 	 */
-	lstat(path: string, callback: (err: Error | null, stats?: { name: string; size: number; type: string; lastModified: number } | null) => void) {
+	lstat(path: string, callback: (err: Error | null, stats?: { name: string; size: number; type: string; lastModified: number; isSymbolicLink: () => boolean; isDirectory: () => boolean; isFile: () => boolean; } | null) => void) {
 		const normalizedPath = this.normalizePath(path);
 		const parts = normalizedPath.split("/").filter(Boolean);
 		let dirPromise = Promise.resolve(this.handle);
@@ -331,6 +343,9 @@ export class FS {
 								size: file.size,
 								type: file.type,
 								lastModified: file.lastModified,
+								isSymbolicLink: () => false,
+								isDirectory: () => file.type === "directory",
+								isFile: () => file.type !== "directory",
 							}),
 						),
 					)
@@ -344,6 +359,9 @@ export class FS {
 										size: 0,
 										type: "directory",
 										lastModified: 0,
+										isSymbolicLink: () => false,
+										isDirectory: () => true,
+										isFile: () => false,
 									}),
 								)
 								.catch(dirErr => {
@@ -358,6 +376,9 @@ export class FS {
 										size: 0,
 										type: "directory",
 										lastModified: 0,
+										isSymbolicLink: () => false,
+										isDirectory: () => true,
+										isFile: () => false,
 									}),
 								)
 								.catch(dirErr => {
@@ -766,12 +787,12 @@ export class FS {
 		/**
 		 * Retrieves information about a file or directory.
 		 * @param path - The absolute or relative path of the file or directory to retrieve information for.
-		 * @returns A promise that resolves with an object containing the name, size, mime type of the file or just as directory, and lastModified timestamp.
+		 * @returns A promise that resolves with an object containing the name, size, mime type of the file or just as directory, lastModified timestamp and also the methods: isSymbolicLink, isDirectory, isFile which return booleans.
 		 * @example
 		 * const stats = await tfs.fs.promises.stat("/documents/file.txt");
 		 */
 		stat: (path: string) => {
-			return new Promise<{ name: string; size: number; type: string; lastModified: number } | null>((resolve, reject) => {
+			return new Promise<{ name: string; size: number; type: string; lastModified: number; isSymbolicLink: () => boolean; isDirectory: () => boolean; isFile: () => boolean; } | null>((resolve, reject) => {
 				this.stat(path, (err, stats) => {
 					if (err) {
 						reject(err);
@@ -784,12 +805,12 @@ export class FS {
 		/**
 		 * Retrieves information about a symlink or file/directory.
 		 * @param path - The absolute or relative path of the symlink or file/directory to retrieve information for.
-		 * @returns A promise that resolves with an object containing the name, size, mime type of the file or just as directory, and lastModified timestamp.
+		 * @returns A promise that resolves with an object containing the name, size, mime type of the file or just as directory, lastModified timestamp and also the methods: isSymbolicLink, isDirectory, isFile which return booleans.
 		 * @example
 		 * const stats = await tfs.fs.promises.stat("/documents/file.txt");
 		 */
 		lstat: (path: string) => {
-			return new Promise<{ name: string; size: number; type: string; lastModified: number } | null>((resolve, reject) => {
+			return new Promise<{ name: string; size: number; type: string; lastModified: number; isSymbolicLink: () => boolean; isDirectory: () => boolean; isFile: () => boolean; } | null>((resolve, reject) => {
 				this.lstat(path, (err, stats) => {
 					if (err) {
 						reject(err);

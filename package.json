@@ -30,7 +30,7 @@
 	"files": [
 		"dist",
 		"lib",
-		"src/**/*.d.ts",
+		"src",
 		"README.md",
 		"LICENSE",
 		"package.json"
