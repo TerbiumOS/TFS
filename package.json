@@ -35,6 +35,12 @@
 		"LICENSE",
 		"package.json"
 	],
+	"exports": {
+		".": {
+			"import": "./lib/index.d.ts",
+			"types": "./lib/index.d.ts"
+		}
+	},
 	"author": "TerbiumOS Development",
 	"license": "Apache-2.0",
 	"packageManager": "pnpm@10.15.1",
