@@ -223,7 +223,7 @@ export class FS {
 	 *   console.log(stats);
 	 * });
 	 */
-	stat(path: string, callback: (err: Error | null, stats?: { name: string; size: number; type: string; lastModified: number; isSymbolicLink: () => boolean; isDirectory: () => boolean; isFile: () => boolean; } | null) => void) {
+	stat(path: string, callback: (err: Error | null, stats?: { name: string; size: number; type: string; lastModified: number; isSymbolicLink: () => boolean; isDirectory: () => boolean; isFile: () => boolean } | null) => void) {
 		const normalizedPath = this.normalizePath(path);
 		const parts = normalizedPath.split("/").filter(Boolean);
 		let dirPromise = Promise.resolve(this.handle);
@@ -324,7 +324,7 @@ export class FS {
 	 *   console.log(stats);
 	 * });
 	 */
-	lstat(path: string, callback: (err: Error | null, stats?: { name: string; size: number; type: string; lastModified: number; isSymbolicLink: () => boolean; isDirectory: () => boolean; isFile: () => boolean; } | null) => void) {
+	lstat(path: string, callback: (err: Error | null, stats?: { name: string; size: number; type: string; lastModified: number; isSymbolicLink: () => boolean; isDirectory: () => boolean; isFile: () => boolean } | null) => void) {
 		const normalizedPath = this.normalizePath(path);
 		const parts = normalizedPath.split("/").filter(Boolean);
 		let dirPromise = Promise.resolve(this.handle);
@@ -792,7 +792,7 @@ export class FS {
 		 * const stats = await tfs.fs.promises.stat("/documents/file.txt");
 		 */
 		stat: (path: string) => {
-			return new Promise<{ name: string; size: number; type: string; lastModified: number; isSymbolicLink: () => boolean; isDirectory: () => boolean; isFile: () => boolean; } | null>((resolve, reject) => {
+			return new Promise<{ name: string; size: number; type: string; lastModified: number; isSymbolicLink: () => boolean; isDirectory: () => boolean; isFile: () => boolean } | null>((resolve, reject) => {
 				this.stat(path, (err, stats) => {
 					if (err) {
 						reject(err);
@@ -810,7 +810,7 @@ export class FS {
 		 * const stats = await tfs.fs.promises.stat("/documents/file.txt");
 		 */
 		lstat: (path: string) => {
-			return new Promise<{ name: string; size: number; type: string; lastModified: number; isSymbolicLink: () => boolean; isDirectory: () => boolean; isFile: () => boolean; } | null>((resolve, reject) => {
+			return new Promise<{ name: string; size: number; type: string; lastModified: number; isSymbolicLink: () => boolean; isDirectory: () => boolean; isFile: () => boolean } | null>((resolve, reject) => {
 				this.lstat(path, (err, stats) => {
 					if (err) {
 						reject(err);
