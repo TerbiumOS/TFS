@@ -1,4 +1,4 @@
-import type { TFS } from "../src";
+import { TFS } from "../src";
 
 declare const tfsPath: string;
 
