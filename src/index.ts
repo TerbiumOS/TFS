@@ -38,4 +38,6 @@ export class TFS {
 	}
 }
 
-window.tfs = TFS;
+if (typeof window !== "undefined") {
+	window.tfs = TFS;
+}
