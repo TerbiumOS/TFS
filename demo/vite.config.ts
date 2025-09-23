@@ -6,7 +6,7 @@ export default defineConfig({
 		viteStaticCopy({
 			targets: [
 				{
-					src: "../dist/*",
+					src: "../dist/web/*",
 					dest: "dist",
 				},
 				{
