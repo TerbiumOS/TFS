@@ -195,15 +195,22 @@ export class Shell {
 	find(path: string, options: { name: string }, callback: (error: Error | null, results: string[] | null) => void) {
 		const newPath = this.path.join(this.cwd, path);
 		let results: string[] = [];
+		let pendingDirs = 0;
+		let finished = false;
 		const walk = (currentPath: string) => {
+			pendingDirs++;
 			this.fs.readdir(currentPath, (err, entries) => {
 				if (err) {
-					callback(genError(err), null);
+					if (!finished) {
+						finished = true;
+						callback(genError(err), null);
+					}
 					return;
 				}
 				let pending = (entries as string[]).length;
 				if (!pending) {
-					if (currentPath === newPath) {
+					if (--pendingDirs === 0 && !finished) {
+						finished = true;
 						callback(null, results);
 					}
 					return;
@@ -212,7 +219,10 @@ export class Shell {
 					const entryPath = this.path.join(currentPath, entry);
 					this.fs.stat(entryPath, (err, stats) => {
 						if (err) {
-							callback(genError(err, entryPath), null);
+							if (!finished) {
+								finished = true;
+								callback(genError(err, entryPath), null);
+							}
 							return;
 						}
 						if (minimatch(entry, options.name)) {
@@ -222,7 +232,8 @@ export class Shell {
 							walk(entryPath);
 						}
 						if (!--pending) {
-							if (currentPath === newPath) {
+							if (--pendingDirs === 0 && !finished) {
+								finished = true;
 								callback(null, results);
 							}
 						}

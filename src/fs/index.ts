@@ -1,6 +1,22 @@
 import { Shell } from "../shell";
 import { genError } from "./errors";
 
+interface FSStats {
+	name: string;
+	size: number;
+	type: string;
+	ctime: Date | number;
+	mtime: Date | number;
+	atime: Date | number;
+	atimeMs: number;
+	ctimeMs: number;
+	mtimeMs: number;
+	dev: string;
+	isSymbolicLink: () => boolean;
+	isDirectory: () => boolean;
+	isFile: () => boolean;
+}
+
 /**
  * The TFS File System Operations Class
  */
@@ -223,7 +239,7 @@ export class FS {
 	 *   console.log(stats);
 	 * });
 	 */
-	stat(path: string, callback: (err: Error | null, stats?: { name: string; size: number; type: string; lastModified: number; isSymbolicLink: () => boolean; isDirectory: () => boolean; isFile: () => boolean } | null) => void) {
+	stat(path: string, callback: (err: Error | null, stats?: FSStats | null) => void) {
 		const normalizedPath = this.normalizePath(path);
 		const parts = normalizedPath.split("/").filter(Boolean);
 		let dirPromise = Promise.resolve(this.handle);
@@ -247,6 +263,7 @@ export class FS {
 										} else if (stats) {
 											callback(null, {
 												...stats,
+												dev: "OPFS",
 												type: "application/symlink",
 												isSymbolicLink: () => true,
 												isDirectory: () => stats.type === "directory",
@@ -259,7 +276,13 @@ export class FS {
 										name: file.name,
 										size: file.size,
 										type: file.type,
-										lastModified: file.lastModified,
+										ctime: new Date(file.lastModified),
+										mtime: new Date(file.lastModified),
+										atime: new Date(),
+										ctimeMs: file.lastModified,
+										mtimeMs: file.lastModified,
+										atimeMs: new Date().getTime(),
+										dev: "OPFS",
 										isSymbolicLink: () => false,
 										isDirectory: () => file.type === "directory",
 										isFile: () => file.type !== "directory",
@@ -277,7 +300,13 @@ export class FS {
 										name: lastPart as string,
 										size: 0,
 										type: "directory",
-										lastModified: 0,
+										ctime: 0,
+										mtime: 0,
+										atime: 0,
+										atimeMs: 0,
+										ctimeMs: 0,
+										mtimeMs: 0,
+										dev: "OPFS",
 										isSymbolicLink: () => false,
 										isDirectory: () => true,
 										isFile: () => false,
@@ -294,7 +323,13 @@ export class FS {
 										name: lastPart as string,
 										size: 0,
 										type: "directory",
-										lastModified: 0,
+										ctime: 0,
+										mtime: 0,
+										atime: 0,
+										ctimeMs: 0,
+										mtimeMs: 0,
+										atimeMs: 0,
+										dev: "OPFS",
 										isSymbolicLink: () => false,
 										isDirectory: () => true,
 										isFile: () => false,
@@ -324,7 +359,7 @@ export class FS {
 	 *   console.log(stats);
 	 * });
 	 */
-	lstat(path: string, callback: (err: Error | null, stats?: { name: string; size: number; type: string; lastModified: number; isSymbolicLink: () => boolean; isDirectory: () => boolean; isFile: () => boolean } | null) => void) {
+	lstat(path: string, callback: (err: Error | null, stats?: FSStats | null) => void) {
 		const normalizedPath = this.normalizePath(path);
 		const parts = normalizedPath.split("/").filter(Boolean);
 		let dirPromise = Promise.resolve(this.handle);
@@ -342,7 +377,13 @@ export class FS {
 								name: file.name,
 								size: file.size,
 								type: file.type,
-								lastModified: file.lastModified,
+								ctime: new Date(file.lastModified),
+								mtime: new Date(file.lastModified),
+								atime: new Date(),
+								ctimeMs: file.lastModified,
+								mtimeMs: file.lastModified,
+								atimeMs: new Date().getTime(),
+								dev: "OPFS",
 								isSymbolicLink: () => false,
 								isDirectory: () => file.type === "directory",
 								isFile: () => file.type !== "directory",
@@ -358,7 +399,13 @@ export class FS {
 										name: lastPart as string,
 										size: 0,
 										type: "directory",
-										lastModified: 0,
+										ctime: 0,
+										mtime: 0,
+										atime: 0,
+										ctimeMs: 0,
+										mtimeMs: 0,
+										atimeMs: 0,
+										dev: "OPFS",
 										isSymbolicLink: () => false,
 										isDirectory: () => true,
 										isFile: () => false,
@@ -375,7 +422,13 @@ export class FS {
 										name: lastPart as string,
 										size: 0,
 										type: "directory",
-										lastModified: 0,
+										ctime: 0,
+										mtime: 0,
+										atime: 0,
+										atimeMs: 0,
+										ctimeMs: 0,
+										mtimeMs: 0,
+										dev: "OPFS",
 										isSymbolicLink: () => false,
 										isDirectory: () => true,
 										isFile: () => false,
@@ -446,7 +499,7 @@ export class FS {
 					const fullPath = this.normalizePath(dir + "/" + entry);
 					const stat = await this.promises.stat(fullPath).catch(() => null);
 					if (stat) {
-						snapshot.set(fullPath, { size: stat.size, lastModified: stat.lastModified, type: stat.type });
+						snapshot.set(fullPath, { size: stat.size, lastModified: stat.mtimeMs, type: stat.type });
 						if (options?.recursive && stat.type === "directory") {
 							await walk(fullPath);
 						}
@@ -455,7 +508,7 @@ export class FS {
 			};
 			const stat = await this.promises.stat(normalizedPath).catch(() => null);
 			if (stat) {
-				snapshot.set(normalizedPath, { size: stat.size, lastModified: stat.lastModified, type: stat.type });
+				snapshot.set(normalizedPath, { size: stat.size, lastModified: stat.mtimeMs, type: stat.type });
 				if (options?.recursive && stat.type === "directory") {
 					await walk(normalizedPath);
 				}
@@ -792,7 +845,7 @@ export class FS {
 		 * const stats = await tfs.fs.promises.stat("/documents/file.txt");
 		 */
 		stat: (path: string) => {
-			return new Promise<{ name: string; size: number; type: string; lastModified: number; isSymbolicLink: () => boolean; isDirectory: () => boolean; isFile: () => boolean } | null>((resolve, reject) => {
+			return new Promise<FSStats | null>((resolve, reject) => {
 				this.stat(path, (err, stats) => {
 					if (err) {
 						reject(err);
@@ -810,7 +863,7 @@ export class FS {
 		 * const stats = await tfs.fs.promises.stat("/documents/file.txt");
 		 */
 		lstat: (path: string) => {
-			return new Promise<{ name: string; size: number; type: string; lastModified: number; isSymbolicLink: () => boolean; isDirectory: () => boolean; isFile: () => boolean } | null>((resolve, reject) => {
+			return new Promise<FSStats | null>((resolve, reject) => {
 				this.lstat(path, (err, stats) => {
 					if (err) {
 						reject(err);
