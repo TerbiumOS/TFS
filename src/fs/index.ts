@@ -241,6 +241,24 @@ export class FS {
 	 */
 	stat(path: string, callback: (err: Error | null, stats?: FSStats | null) => void) {
 		const normalizedPath = this.normalizePath(path);
+		if (normalizedPath === "/") {
+			callback(null, {
+				name: "/",
+				size: 0,
+				type: "directory",
+				ctime: 0,
+				mtime: 0,
+				atime: 0,
+				atimeMs: 0,
+				ctimeMs: 0,
+				mtimeMs: 0,
+				dev: "OPFS",
+				isSymbolicLink: () => false,
+				isDirectory: () => true,
+				isFile: () => false,
+			});
+			return;
+		}
 		const parts = normalizedPath.split("/").filter(Boolean);
 		let dirPromise = Promise.resolve(this.handle);
 		for (let i = 0; i < parts.length - 1; i++) {
@@ -361,6 +379,24 @@ export class FS {
 	 */
 	lstat(path: string, callback: (err: Error | null, stats?: FSStats | null) => void) {
 		const normalizedPath = this.normalizePath(path);
+		if (normalizedPath === "/") {
+			callback(null, {
+				name: "/",
+				size: 0,
+				type: "directory",
+				ctime: 0,
+				mtime: 0,
+				atime: 0,
+				atimeMs: 0,
+				ctimeMs: 0,
+				mtimeMs: 0,
+				dev: "OPFS",
+				isSymbolicLink: () => false,
+				isDirectory: () => true,
+				isFile: () => false,
+			});
+			return;
+		}
 		const parts = normalizedPath.split("/").filter(Boolean);
 		let dirPromise = Promise.resolve(this.handle);
 		for (let i = 0; i < parts.length - 1; i++) {
