@@ -16,5 +16,6 @@ export declare class TFS {
 	version: string;
 	private constructor();
 	static init(): Promise<TFS>;
+	static initSw(): void;
 }
 //# sourceMappingURL=index.d.ts.map

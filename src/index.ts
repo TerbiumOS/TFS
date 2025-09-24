@@ -36,6 +36,24 @@ export class TFS {
 		const handle = await navigator.storage.getDirectory();
 		return new TFS(handle);
 	}
+
+	/**
+	 * Initializes TFS for use in a service worker
+	 * @returns {void}
+	 * @example
+	 * // In your service worker file
+	 * importScripts("/tfs/tfs.js");
+	 * tfs.initSw();
+	 * // TFS is now defined on self
+	 */
+	static initSw(): void {
+		navigator.storage.getDirectory().then(handle => {
+			const tfs = new TFS(handle);
+			// @ts-expect-error This is expected behavior were essentially overwriting it for the sw
+			self.tfs = tfs;
+			console.log("TFS is ready");
+		});
+	}
 }
 
 if (typeof window !== "undefined") {
