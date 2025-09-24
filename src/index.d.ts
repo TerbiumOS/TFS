@@ -7,6 +7,9 @@ declare global {
 		tfs: typeof TFS;
 	}
 }
+/**
+ * The TFS File System Library
+ */
 export declare class TFS {
 	handle: FileSystemDirectoryHandle;
 	fs: FS;
@@ -15,7 +18,20 @@ export declare class TFS {
 	shell: Shell;
 	version: string;
 	private constructor();
+	/**
+	 * Creates a new instance of TFS
+	 * @returns {Promise<TFS>} Instance of TFS
+	 */
 	static init(): Promise<TFS>;
+	/**
+	 * Initializes TFS for use in a service worker
+	 * @returns {void}
+	 * @example
+	 * // In your service worker file
+	 * importScripts("/tfs/tfs.js");
+	 * tfs.initSw();
+	 * // TFS is now defined on self
+	 */
 	static initSw(): void;
 }
 //# sourceMappingURL=index.d.ts.map
