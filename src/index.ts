@@ -21,7 +21,7 @@ export class TFS {
 	shell: Shell;
 	version: string = version;
 
-	private constructor(handle: FileSystemDirectoryHandle) {
+	constructor(handle: FileSystemDirectoryHandle) {
 		this.handle = handle;
 		this.fs = new FS(this.handle);
 		this.path = new Path();
