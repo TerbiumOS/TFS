@@ -736,6 +736,41 @@ export class FS {
 	}
 
 	/**
+	 * Reads the target of a symbolic link.
+	 * @param path - The absolute or relative path of the symlink to read.
+	 * @param callback - Callback function called with the result. Receives an error (or null) and the target path of the symlink.
+	 * @example
+	 * tfs.fs.readlink("/documents/symlink.lnk", (err, target) => {
+	 *   if (err) throw err;
+	 *   console.log("Symlink points to:", target);
+	 * });
+	 */
+	readlink(path: string, callback?: (err: Error | null, target: string | null) => void) {
+		const normalizedPath = this.normalizePath(path);
+		const parts = normalizedPath.split("/").filter(Boolean);
+		let dirPromise: Promise<FileSystemDirectoryHandle> = Promise.resolve(this.handle);
+		for (let i = 0; i < parts.length - 1; i++) {
+			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(parts[i] as string));
+		}
+		const fileName = parts[parts.length - 1];
+		dirPromise
+			.then(dirHandle => dirHandle.getFileHandle(fileName as string))
+			.then(fileHandle => fileHandle.getFile())
+			.then(file => {
+				file.text().then(text => {
+					const isSymlink = /^symlink:(.+?):(file|dir|junction)$/.exec(text);
+					if (isSymlink) {
+						const target = isSymlink[1];
+						if (callback) callback(null, target as string);
+					}
+				});
+			})
+			.catch(err => {
+				if (callback) callback(genError(err, path), null);
+			});
+	}
+
+	/**
 	 * Copies a file from one path to another.
 	 * @param oldPath - The absolute or relative path of the file to copy.
 	 * @param newPath - The absolute or relative path where the file should be copied to.
@@ -1013,6 +1048,24 @@ export class FS {
 						reject(err);
 					} else {
 						resolve();
+					}
+				});
+			});
+		},
+		/**
+		 * Reads the target of a symbolic link.
+		 * @param path - The absolute or relative path of the symlink to read.
+		 * @returns A promise that resolves with the target path of the symlink.
+		 * @example
+		 * const target = await tfs.fs.promises.readlink("/documents/symlink.lnk");
+		 */
+		readlink: (path: string) => {
+			return new Promise<string>((resolve, reject) => {
+				this.readlink(path, (err, target) => {
+					if (err) {
+						reject(err);
+					} else {
+						resolve(target!);
 					}
 				});
 			});

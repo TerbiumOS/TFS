@@ -4,12 +4,6 @@ import { Path } from "./path";
 import { Shell } from "./shell";
 import { version } from "../package.json";
 
-declare global {
-	interface Window {
-		tfs: typeof TFS;
-	}
-}
-
 /**
  * The TFS File System Library
  */
@@ -49,7 +43,6 @@ export class TFS {
 	static initSw(): void {
 		navigator.storage.getDirectory().then(handle => {
 			const tfs = new TFS(handle);
-			// @ts-expect-error This is expected behavior were essentially overwriting it for the sw
 			self.tfs = tfs;
 			console.log("TFS is ready");
 		});
@@ -57,5 +50,5 @@ export class TFS {
 }
 
 if (typeof window !== "undefined") {
-	window.tfs = TFS;
+	window.tfs = TFS as unknown as TFS;
 }

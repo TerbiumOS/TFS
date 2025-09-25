@@ -3,7 +3,7 @@ import { TFS } from "../src";
 declare const tfsPath: string;
 declare global {
 	interface Window {
-		tfs: typeof TFS;
+		tfs: TFSType;
 	}
 }
 declare type TFSType = InstanceType<typeof TFS>;
