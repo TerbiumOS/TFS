@@ -498,6 +498,58 @@ export class FS {
 	}
 
 	/**
+	 * Appends data to a file. If the file does not exist, it is created.
+	 * @param path - The absolute or relative path to the file to append data to.
+	 * @param data - The data to append to the file.
+	 * @param callback - The callback function to call when the operation is complete.
+	 * @example
+	 * tfs.fs.appendFile("/documents/file.txt", "Additional content", (err) => {
+	 *   if (err) throw err;
+	 *   console.log("Data appended successfully!");
+	 * });
+	 */
+	appendFile(path: string, data: string | ArrayBuffer | ArrayBufferView, callback: (err: Error | null) => void) {
+		this.readFile(path, "arraybuffer", (err, existingData) => {
+			if (err && err.name !== "NotFoundError") {
+				callback(err);
+				return;
+			}
+			let newData: ArrayBuffer;
+			if (existingData) {
+				const existingArray = new Uint8Array(existingData);
+				let dataArray: Uint8Array;
+				if (typeof data === "string") {
+					dataArray = new TextEncoder().encode(data);
+				} else if (data instanceof ArrayBuffer) {
+					dataArray = new Uint8Array(data);
+				} else if (ArrayBuffer.isView(data)) {
+					dataArray = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+				} else {
+					callback(genError("invalid data type"));
+					return;
+				}
+				const combined = new Uint8Array(existingArray.length + dataArray.length);
+				combined.set(existingArray, 0);
+				combined.set(dataArray, existingArray.length);
+				newData = combined.buffer;
+			} else {
+				if (typeof data === "string") {
+					newData = new TextEncoder().encode(data).buffer;
+				} else if (data instanceof ArrayBuffer) {
+					newData = data;
+				} else if (ArrayBuffer.isView(data)) {
+					const sliced = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+					newData = sliced instanceof ArrayBuffer ? sliced : new ArrayBuffer(0);
+				} else {
+					callback(genError("invalid data type"));
+					return;
+				}
+			}
+			this.writeFile(path, newData, callback);
+		});
+	}
+
+	/**
 	 * Watches for changes to a file or directory.
 	 * @param path - The absolute or relative path of the file or directory to watch.
 	 * @param options - Options for the watcher (e.g., recursive).
@@ -880,8 +932,9 @@ export class FS {
 		 * @example
 		 * const data = await tfs.fs.promises.readFile("/documents/file.txt", "utf8");
 		 */
-		readFile: (file: string, type: "utf8" | "arraybuffer" | "blob" | "base64") => {
+		readFile: (file: string, type?: "utf8" | "arraybuffer" | "blob" | "base64") => {
 			return new Promise<any>((resolve, reject) => {
+				if (!type) type = "utf8";
 				this.readFile(file, type, (err: Error | null, data: any) => {
 					if (err) {
 						reject(err);
@@ -954,6 +1007,25 @@ export class FS {
 						reject(err);
 					} else {
 						resolve(stats!);
+					}
+				});
+			});
+		},
+		/**
+		 * Appends data to a file. If the file does not exist, it is created.
+		 * @param path - The absolute or relative path to the file to append data to.
+		 * @param data - The data to append to the file.
+		 * @returns A promise that resolves when the data has been appended.
+		 * @example
+		 * await tfs.fs.promises.appendFile("/documents/file.txt", "Additional content");
+		 */
+		appendFile: (path: string, data: string | ArrayBuffer | ArrayBufferView) => {
+			return new Promise<void>((resolve, reject) => {
+				this.appendFile(path, data, err => {
+					if (err) {
+						reject(err);
+					} else {
+						resolve();
 					}
 				});
 			});

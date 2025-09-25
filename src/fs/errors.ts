@@ -79,6 +79,10 @@ export function genError(err: any, path?: string) {
 		return createFSError("EIO", path);
 	} else if (err && err.name === "DirectoryNotEmptyError") {
 		return createFSError("ENOTEMPTY", path);
+	} else if (err && err.name === "PathExistsError") {
+		return createFSError("EEXIST", path);
+	} else if (err && err.name === "noFD") {
+		return createFSError("EBADF", path);
 	} else {
 		return createFSError("UNKNOWN", path, err && err.message);
 	}
