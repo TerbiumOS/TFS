@@ -31,6 +31,8 @@ const shell = tfs.shell
 const shell = tfs.fs.shell
 ```
 
+however, if your lazy or are using some kind of compatability layer and still want the 1 to 1 support, TFS provides `tfs.sh` as a uninitialized shell however this isnt recommended.
+
 As for the actual FS Usage, it remains the same as [Filer](https://github.com/filerjs/filer?tab=readme-ov-file#api-reference) which targets a [node:fs](https://nodejs.org/api/fs.html) like syntax
 
 ## Contributing

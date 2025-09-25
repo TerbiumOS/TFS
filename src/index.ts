@@ -14,12 +14,15 @@ export class TFS {
 	buffer: typeof Buffer = Buffer;
 	shell: Shell;
 	version: string = version;
+	// Polyfill for legacy applications that still expect shell as a uninitialized class
+	sh?: typeof Shell;
 
 	constructor(handle: FileSystemDirectoryHandle) {
 		this.handle = handle;
 		this.fs = new FS(this.handle);
 		this.path = new Path();
 		this.shell = new Shell(this.handle);
+		this.sh = Shell;
 	}
 
 	/**

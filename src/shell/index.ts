@@ -13,6 +13,14 @@ export class Shell {
 	private path: Path;
 
 	constructor(handle: FileSystemDirectoryHandle, fs?: FS) {
+		if (!handle) {
+			handle = navigator.storage
+				.getDirectory()
+				.then(h => (this.handle = h))
+				.catch(() => {
+					throw new Error("Failed to get a handle. Try defining one?");
+				}) as unknown as FileSystemDirectoryHandle;
+		}
 		this.handle = handle;
 		this.cwd = "/";
 		this.fs = fs || new FS(this.handle);
