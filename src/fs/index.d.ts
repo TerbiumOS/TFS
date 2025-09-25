@@ -56,8 +56,14 @@ export declare class FS {
 	 *   if (err) throw err;
 	 *   console.log("File contents:", data);
 	 * });
+	 *
+	 * // You can also call it without specifying the type, in which case it defaults to "utf8":
+	 * tfs.fs.readFile("/documents/file.txt", (err, data) => {
+	 *   if (err) throw err;
+	 *   console.log("File contents:", data);
+	 * });
 	 */
-	readFile(file: string, type: "utf8" | "arraybuffer" | "blob" | "base64", callback: (err: Error | null, data: any) => void): void;
+	readFile(file: string, fTypeorcb: "utf8" | "arraybuffer" | "blob" | "base64" | ((err: Error | null, data: any) => void), callback?: (err: Error | null, data: any) => void): void;
 	/**
 	 * Creates a directory at the specified path
 	 * @param dir - The absolute or relative path of the directory to create.
@@ -189,6 +195,17 @@ export declare class FS {
 	 */
 	symlink(target: string, path: string, type?: "file" | "dir" | "junction", callback?: (err: Error | null) => void): void;
 	/**
+	 * Reads the target of a symbolic link.
+	 * @param path - The absolute or relative path of the symlink to read.
+	 * @param callback - Callback function called with the result. Receives an error (or null) and the target path of the symlink.
+	 * @example
+	 * tfs.fs.readlink("/documents/symlink.lnk", (err, target) => {
+	 *   if (err) throw err;
+	 *   console.log("Symlink points to:", target);
+	 * });
+	 */
+	readlink(path: string, callback?: (err: Error | null, target: string | null) => void): void;
+	/**
 	 * Copies a file from one path to another.
 	 * @param oldPath - The absolute or relative path of the file to copy.
 	 * @param newPath - The absolute or relative path where the file should be copied to.
@@ -230,7 +247,7 @@ export declare class FS {
 		 * @example
 		 * const data = await tfs.fs.promises.readFile("/documents/file.txt", "utf8");
 		 */
-		readFile: (file: string, type: "utf8" | "arraybuffer" | "blob") => Promise<any>;
+		readFile: (file: string, type: "utf8" | "arraybuffer" | "blob" | "base64") => Promise<any>;
 		/**
 		 * Creates a new directory.
 		 * @param dir - The path to the directory to create.
@@ -315,6 +332,14 @@ export declare class FS {
 		 * await tfs.fs.promises.symlink("/documents/target.txt", "/documents/symlink.txt", "file");
 		 */
 		symlink: (target: string, path: string, type?: "file" | "dir" | "junction") => Promise<void>;
+		/**
+		 * Reads the target of a symbolic link.
+		 * @param path - The absolute or relative path of the symlink to read.
+		 * @returns A promise that resolves with the target path of the symlink.
+		 * @example
+		 * const target = await tfs.fs.promises.readlink("/documents/symlink.lnk");
+		 */
+		readlink: (path: string) => Promise<string>;
 		/**
 		 * Copies a file or directory.
 		 * @param oldPath - The absolute or relative path of the file or directory to copy.

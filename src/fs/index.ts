@@ -108,8 +108,22 @@ export class FS {
 	 *   if (err) throw err;
 	 *   console.log("File contents:", data);
 	 * });
+	 *
+	 * // You can also call it without specifying the type, in which case it defaults to "utf8":
+	 * tfs.fs.readFile("/documents/file.txt", (err, data) => {
+	 *   if (err) throw err;
+	 *   console.log("File contents:", data);
+	 * });
 	 */
-	readFile(file: string, type: "utf8" | "arraybuffer" | "blob" | "base64", callback: (err: Error | null, data: any) => void) {
+	readFile(file: string, fTypeorcb: "utf8" | "arraybuffer" | "blob" | "base64" | ((err: Error | null, data: any) => void), callback?: (err: Error | null, data: any) => void) {
+		let type: "utf8" | "arraybuffer" | "blob" | "base64" = "utf8";
+		let cb: (err: Error | null, data: any) => void;
+		if (typeof fTypeorcb === "string") {
+			type = fTypeorcb;
+			cb = callback!;
+		} else {
+			cb = fTypeorcb;
+		}
 		const normalizedPath = this.normalizePath(file);
 		const parts = normalizedPath.split("/").filter(Boolean);
 		let dirPromise: Promise<FileSystemDirectoryHandle> = Promise.resolve(this.handle);
@@ -128,32 +142,32 @@ export class FS {
 							const target = isSymlink[1];
 							const linkType = isSymlink[2];
 							if (linkType === "file") {
-								this.readFile(target as string, type, callback);
+								this.readFile(target as string, type, cb);
 							} else {
-								callback(genError(new Error("TypeMismatchError"), file.name), null);
+								cb(genError(new Error("TypeMismatchError"), file.name), null);
 							}
 							return;
 						}
 						if (type === "arraybuffer") {
-							file.arrayBuffer().then(data => callback(null, data));
+							file.arrayBuffer().then(data => cb(null, data));
 						} else if (type === "blob") {
-							callback(null, file);
+							cb(null, file);
 						} else if (type === "base64") {
 							const reader = new FileReader();
 							reader.onload = () => {
-								callback(null, reader.result);
+								cb(null, reader.result);
 							};
 							reader.readAsDataURL(file);
 						} else {
-							callback(null, text);
+							cb(null, text);
 						}
 					})
 					.catch(err => {
-						callback(genError(err, file.name), null);
+						cb(genError(err, file.name), null);
 					});
 			})
 			.catch(err => {
-				callback(genError(err, file), null);
+				cb(genError(err, file), null);
 			});
 	}
 
@@ -866,7 +880,7 @@ export class FS {
 		 * @example
 		 * const data = await tfs.fs.promises.readFile("/documents/file.txt", "utf8");
 		 */
-		readFile: (file: string, type: "utf8" | "arraybuffer" | "blob") => {
+		readFile: (file: string, type: "utf8" | "arraybuffer" | "blob" | "base64") => {
 			return new Promise<any>((resolve, reject) => {
 				this.readFile(file, type, (err: Error | null, data: any) => {
 					if (err) {

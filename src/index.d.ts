@@ -2,11 +2,6 @@ import { Buffer } from "buffer";
 import { FS } from "./fs";
 import { Path } from "./path";
 import { Shell } from "./shell";
-declare global {
-	interface Window {
-		tfs: typeof TFS;
-	}
-}
 /**
  * The TFS File System Library
  */
@@ -17,7 +12,8 @@ export declare class TFS {
 	buffer: typeof Buffer;
 	shell: Shell;
 	version: string;
-	private constructor();
+	sh?: typeof Shell;
+	constructor(handle: FileSystemDirectoryHandle);
 	/**
 	 * Creates a new instance of TFS
 	 * @returns {Promise<TFS>} Instance of TFS

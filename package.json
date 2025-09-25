@@ -1,7 +1,7 @@
 {
 	"name": "@terbiumos/tfs",
 	"displayName": "TFS",
-	"version": "1.0.4-beta",
+	"version": "1.0.5-beta",
 	"description": "The drop in Filer replacement you have been waiting for. Completely Typed and Built with TypeScript",
 	"type": "module",
 	"types": "/src/index.d.ts",
@@ -16,7 +16,8 @@
 		"fmt": "biome format --write .",
 		"test": "cd ./demo && npm run test",
 		"test:install": "cd ./demo && npm i && npm run test",
-		"ci": "cd ./demo && npm i && cd ../ && npm run build"
+		"ci": "cd ./demo && npm i && cd ../ && npm run build",
+		"types": "tsc --declaration --emitDeclarationOnly"
 	},
 	"keywords": [
 		"fs",
@@ -48,6 +49,7 @@
 		"@biomejs/biome": "^2.2.4",
 		"@rspack/cli": "^1.5.6",
 		"@rspack/core": "^1.5.6",
+		"tsc": "^2.0.4",
 		"typescript": "^5.9.2"
 	},
 	"dependencies": {
