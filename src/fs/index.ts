@@ -5,6 +5,8 @@ interface FSStats {
 	name: string;
 	size: number;
 	type: string;
+	// Non-Standard but should be included
+	mime: string;
 	ctime: Date | number;
 	mtime: Date | number;
 	atime: Date | number;
@@ -15,6 +17,8 @@ interface FSStats {
 	isSymbolicLink: () => boolean;
 	isDirectory: () => boolean;
 	isFile: () => boolean;
+	uid: number;
+	gid: number;
 }
 
 /**
@@ -69,14 +73,29 @@ export class FS {
 	 * Writes data to a file at the specified path. If the file or any parent directories do not exist, they are created.
 	 * @param file - The absolute or relative path to the file to write.
 	 * @param content - The content to write to the file. Can be a string, ArrayBuffer, or Blob.
+	 * @param type - The type of data being written: "utf8" for string, "arraybuffer" for ArrayBuffer, "blob" for Blob, or "base64" for a base64-encoded string. Defaults to "utf8".
 	 * @param callback - Optional callback function called when the operation completes. Receives an error if one occurs, or null on success.
 	 * @example
 	 * tfs.fs.writeFile("/documents/file.txt", "Hello, World!", (err) => {
 	 *   if (err) throw err;
 	 *   console.log("File written successfully!");
 	 * });
+	 *
+	 * // You can also specify the type of content being written:
+	 * tfs.fs.writeFile("/documents/file.txt", "Hello, World!", "utf8", (err) => {
+	 *   if (err) throw err;
+	 *   console.log("File written successfully!");
+	 * });
 	 */
-	writeFile(file: string, content: string | ArrayBuffer | Blob, callback?: (err: Error | null) => void) {
+	writeFile(file: string, content: string | ArrayBuffer | Blob, torb?: "utf8" | "arraybuffer" | "blob" | "base64" | ((err: Error | null) => void), callback?: (err: Error | null) => void) {
+		let type: "utf8" | "arraybuffer" | "blob" | "base64" = "utf8";
+		let cb: (err: Error | null) => void;
+		if (typeof torb === "function") {
+			cb = torb;
+		} else {
+			type = torb || "utf8";
+			cb = callback!;
+		}
 		const normalizedPath = this.normalizePath(file);
 		const parts = normalizedPath.split("/").filter(Boolean);
 		let dirPromise = Promise.resolve(this.handle);
@@ -89,12 +108,66 @@ export class FS {
 		dirPromise
 			.then(dirHandle => dirHandle.getFileHandle(fileName as string, { create: true }))
 			.then(fileHandle => fileHandle.createWritable())
-			.then(writable => writable.write(content).then(() => writable.close()))
+			.then(async writable => {
+				let dataToWrite: string | ArrayBuffer | Blob;
+				switch (type) {
+					case "arraybuffer":
+						if (typeof content === "string") {
+							dataToWrite = new TextEncoder().encode(content).buffer;
+						} else if (content instanceof ArrayBuffer) {
+							dataToWrite = content;
+						} else if (content instanceof Blob) {
+							dataToWrite = await content.arrayBuffer();
+						} else {
+							dataToWrite = new ArrayBuffer(0);
+						}
+						break;
+					case "blob":
+						if (content instanceof Blob) {
+							dataToWrite = content;
+						} else if (typeof content === "string" || content instanceof ArrayBuffer) {
+							dataToWrite = new Blob([content]);
+						} else {
+							dataToWrite = new Blob([]);
+						}
+						break;
+					case "base64":
+						if (typeof content === "string") {
+							const binary = atob(content);
+							const len = binary.length;
+							const bytes = new Uint8Array(len);
+							for (let i = 0; i < len; i++) {
+								bytes[i] = binary.charCodeAt(i);
+							}
+							dataToWrite = bytes.buffer;
+						} else if (content instanceof ArrayBuffer) {
+							dataToWrite = content;
+						} else if (content instanceof Blob) {
+							dataToWrite = await content.arrayBuffer();
+						} else {
+							dataToWrite = new ArrayBuffer(0);
+						}
+						break;
+					case "utf8":
+					default:
+						if (typeof content === "string") {
+							dataToWrite = content;
+						} else if (content instanceof ArrayBuffer) {
+							dataToWrite = new TextDecoder().decode(content);
+						} else if (content instanceof Blob) {
+							dataToWrite = await content.text();
+						} else {
+							dataToWrite = String(content);
+						}
+				}
+				await writable.write(dataToWrite);
+				await writable.close();
+			})
 			.then(() => {
-				if (callback) callback(null);
+				if (cb) cb(null);
 			})
 			.catch(err => {
-				if (callback) callback(genError(err, normalizedPath));
+				if (cb) cb(genError(err, normalizedPath));
 			});
 	}
 
@@ -259,7 +332,8 @@ export class FS {
 			callback(null, {
 				name: "/",
 				size: 0,
-				type: "directory",
+				mime: "DIRECTORY",
+				type: "DIRECTORY",
 				ctime: 0,
 				mtime: 0,
 				atime: 0,
@@ -270,6 +344,8 @@ export class FS {
 				isSymbolicLink: () => false,
 				isDirectory: () => true,
 				isFile: () => false,
+				uid: 0,
+				gid: 0,
 			});
 			return;
 		}
@@ -296,10 +372,11 @@ export class FS {
 											callback(null, {
 												...stats,
 												dev: "OPFS",
-												type: "application/symlink",
+												mime: "application/symlink",
+												type: "symlink",
 												isSymbolicLink: () => true,
-												isDirectory: () => stats.type === "directory",
-												isFile: () => stats.type !== "directory",
+												isDirectory: () => stats.type === "DIRECTORY",
+												isFile: () => stats.type !== "DIRECTORY",
 											});
 										}
 									});
@@ -307,6 +384,7 @@ export class FS {
 									callback(null, {
 										name: file.name,
 										size: file.size,
+										mime: file.type === "DIRECTORY" ? "DIRECTORY" : "FILE",
 										type: file.type,
 										ctime: new Date(file.lastModified),
 										mtime: new Date(file.lastModified),
@@ -316,8 +394,10 @@ export class FS {
 										atimeMs: new Date().getTime(),
 										dev: "OPFS",
 										isSymbolicLink: () => false,
-										isDirectory: () => file.type === "directory",
-										isFile: () => file.type !== "directory",
+										isDirectory: () => file.type === "DIRECTORY",
+										isFile: () => file.type !== "DIRECTORY",
+										uid: 0,
+										gid: 0,
 									});
 								}
 							}),
@@ -331,7 +411,8 @@ export class FS {
 									callback(null, {
 										name: lastPart as string,
 										size: 0,
-										type: "directory",
+										type: "DIRECTORY",
+										mime: "DIRECTORY",
 										ctime: 0,
 										mtime: 0,
 										atime: 0,
@@ -342,6 +423,8 @@ export class FS {
 										isSymbolicLink: () => false,
 										isDirectory: () => true,
 										isFile: () => false,
+										uid: 0,
+										gid: 0,
 									}),
 								)
 								.catch(dirErr => {
@@ -354,7 +437,8 @@ export class FS {
 									callback(null, {
 										name: lastPart as string,
 										size: 0,
-										type: "directory",
+										type: "DIRECTORY",
+										mime: "DIRECTORY",
 										ctime: 0,
 										mtime: 0,
 										atime: 0,
@@ -365,6 +449,8 @@ export class FS {
 										isSymbolicLink: () => false,
 										isDirectory: () => true,
 										isFile: () => false,
+										uid: 0,
+										gid: 0,
 									}),
 								)
 								.catch(dirErr => {
@@ -397,7 +483,8 @@ export class FS {
 			callback(null, {
 				name: "/",
 				size: 0,
-				type: "directory",
+				type: "DIRECTORY",
+				mime: "DIRECTORY",
 				ctime: 0,
 				mtime: 0,
 				atime: 0,
@@ -408,6 +495,8 @@ export class FS {
 				isSymbolicLink: () => false,
 				isDirectory: () => true,
 				isFile: () => false,
+				uid: 0,
+				gid: 0,
 			});
 			return;
 		}
@@ -427,6 +516,7 @@ export class FS {
 								name: file.name,
 								size: file.size,
 								type: file.type,
+								mime: file.type === "DIRECTORY" ? "DIRECTORY" : "FILE",
 								ctime: new Date(file.lastModified),
 								mtime: new Date(file.lastModified),
 								atime: new Date(),
@@ -435,8 +525,10 @@ export class FS {
 								atimeMs: new Date().getTime(),
 								dev: "OPFS",
 								isSymbolicLink: () => false,
-								isDirectory: () => file.type === "directory",
-								isFile: () => file.type !== "directory",
+								isDirectory: () => file.type === "DIRECTORY",
+								isFile: () => file.type !== "DIRECTORY",
+								uid: 0,
+								gid: 0,
 							}),
 						),
 					)
@@ -448,7 +540,8 @@ export class FS {
 									callback(null, {
 										name: lastPart as string,
 										size: 0,
-										type: "directory",
+										type: "DIRECTORY",
+										mime: "DIRECTORY",
 										ctime: 0,
 										mtime: 0,
 										atime: 0,
@@ -459,6 +552,8 @@ export class FS {
 										isSymbolicLink: () => false,
 										isDirectory: () => true,
 										isFile: () => false,
+										uid: 0,
+										gid: 0,
 									}),
 								)
 								.catch(dirErr => {
@@ -471,7 +566,8 @@ export class FS {
 									callback(null, {
 										name: lastPart as string,
 										size: 0,
-										type: "directory",
+										type: "DIRECTORY",
+										mime: "DIRECTORY",
 										ctime: 0,
 										mtime: 0,
 										atime: 0,
@@ -482,6 +578,8 @@ export class FS {
 										isSymbolicLink: () => false,
 										isDirectory: () => true,
 										isFile: () => false,
+										uid: 0,
+										gid: 0,
 									}),
 								)
 								.catch(dirErr => {
@@ -545,7 +643,7 @@ export class FS {
 					return;
 				}
 			}
-			this.writeFile(path, newData, callback);
+			this.writeFile(path, newData, "arraybuffer", callback);
 		});
 	}
 
@@ -602,7 +700,7 @@ export class FS {
 					const stat = await this.promises.stat(fullPath).catch(() => null);
 					if (stat) {
 						snapshot.set(fullPath, { size: stat.size, lastModified: stat.mtimeMs, type: stat.type });
-						if (options?.recursive && stat.type === "directory") {
+						if (options?.recursive && stat.type === "DIRECTORY") {
 							await walk(fullPath);
 						}
 					}
@@ -611,7 +709,7 @@ export class FS {
 			const stat = await this.promises.stat(normalizedPath).catch(() => null);
 			if (stat) {
 				snapshot.set(normalizedPath, { size: stat.size, lastModified: stat.mtimeMs, type: stat.type });
-				if (options?.recursive && stat.type === "directory") {
+				if (options?.recursive && stat.type === "DIRECTORY") {
 					await walk(normalizedPath);
 				}
 			}
@@ -727,7 +825,7 @@ export class FS {
 				if (callback) callback(genError(err, oldP));
 				return;
 			}
-			if (stats.type === "directory") {
+			if (stats.type === "DIRECTORY") {
 				this.mkdir(newP, err => {
 					if (err) {
 						if (callback) callback(genError(err, newP));
@@ -792,7 +890,7 @@ export class FS {
 	 */
 	symlink(target: string, path: string, type?: "file" | "dir" | "junction", callback?: (err: Error | null) => void) {
 		const symlinkType = type || "file";
-		this.writeFile(path, `symlink:${target}:${symlinkType}`, (err: Error | null) => {
+		this.writeFile(path, `symlink:${target}:${symlinkType}`, "utf8", (err: Error | null) => {
 			if (err) {
 				if (callback) callback(genError(err, path));
 			} else {
@@ -800,6 +898,9 @@ export class FS {
 			}
 		});
 	}
+
+	// Access is coming in v1.1 with the introduction of permissions and other missing FD features. for now this will just return true
+	access = this.exists;
 
 	/**
 	 * Reads the target of a symbolic link.
@@ -852,7 +953,7 @@ export class FS {
 		const newP = this.normalizePath(newPath);
 		this.readFile(oldP, "arraybuffer", (err, data) => {
 			if (err) genError(err, oldP);
-			this.writeFile(newP, data, callback);
+			this.writeFile(newP, data, "arraybuffer", callback);
 		});
 	}
 
@@ -873,7 +974,7 @@ export class FS {
 				if (callback) callback(genError(err, oldPath));
 				return;
 			}
-			if (stats.type === "directory") {
+			if (stats.type === "DIRECTORY") {
 				this.mkdir(newPath, err => {
 					if (err) {
 						if (callback) callback(genError(err, newPath));
@@ -918,10 +1019,15 @@ export class FS {
 		 * @example
 		 * await tfs.fs.promises.writeFile("/documents/file.txt", "Hello, World!");
 		 */
-		writeFile: (file: string, content: string | ArrayBuffer | Blob) => {
-			return new Promise<void>(resolve => {
-				this.writeFile(file, content);
-				resolve();
+		writeFile: (file: string, content: string | ArrayBuffer | Blob, type?: "utf8" | "arraybuffer" | "blob" | "base64") => {
+			return new Promise<void>((resolve, reject) => {
+				this.writeFile(file, content, type, err => {
+					if (err) {
+						reject(err);
+					} else {
+						resolve();
+					}
+				});
 			});
 		},
 		/**
@@ -952,9 +1058,14 @@ export class FS {
 		 * await tfs.fs.promises.mkdir("/documents/newFolder");
 		 */
 		mkdir: (dir: string) => {
-			return new Promise<void>(resolve => {
-				this.mkdir(dir);
-				resolve();
+			return new Promise<void>((resolve, reject) => {
+				this.mkdir(dir, err => {
+					if (err) {
+						reject(err);
+					} else {
+						resolve();
+					}
+				});
 			});
 		},
 		/**
@@ -1056,6 +1167,13 @@ export class FS {
 		 * const exists = await tfs.fs.promises.exists("/documents/file.txt");
 		 */
 		exists: (path: string) => {
+			return new Promise<boolean>(resolve => {
+				this.exists(path, exists => {
+					resolve(exists);
+				});
+			});
+		},
+		access: (path: string) => {
 			return new Promise<boolean>(resolve => {
 				this.exists(path, exists => {
 					resolve(exists);
