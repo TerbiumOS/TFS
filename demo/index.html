@@ -11,10 +11,25 @@
             const obj = await tfs.init()
             window.tfs = obj
         })();
+        self.uploader = () => {
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.multiple = true;
+            fileInput.onchange = async (event) => {
+                for (const file of event.target.files) {
+                    const content = await file.arrayBuffer();
+                    Filer.fs.promises.writeFile(`/${file.name}`, window.tfs.buffer.from(content));
+                    window.tfs.fs.promises.writeFile(`/${file.name}`, window.tfs.buffer.from(content));
+                    console.log("[TFS Demo] Uploaded file to Filer & TFS")
+                }
+            };
+            fileInput.click();
+        }
     </script>
 </head>
 <body>
     <h1>TFS Demo</h1>
     <p>Open the devtools to debug</p>
+    <button onClick="self.uploader()">Test Upload</button>
 </body>
 </html>

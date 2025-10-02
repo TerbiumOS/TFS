@@ -87,13 +87,13 @@ export class FS {
 	 *   console.log("File written successfully!");
 	 * });
 	 */
-	writeFile(file: string, content: string | ArrayBuffer | Blob, torb?: "utf8" | "arraybuffer" | "blob" | "base64" | ((err: Error | null) => void), callback?: (err: Error | null) => void) {
-		let type: "utf8" | "arraybuffer" | "blob" | "base64" = "utf8";
+	writeFile(file: string, content: string | ArrayBuffer | Blob | Uint8Array, torb?: "utf8" | "base64" | "arraybuffer" | "blob" | ((err: Error | null) => void), callback?: (err: Error | null) => void) {
+		let encoding: "utf8" | "base64" | "arraybuffer" | "blob" = "utf8";
 		let cb: (err: Error | null) => void;
 		if (typeof torb === "function") {
 			cb = torb;
 		} else {
-			type = torb || "utf8";
+			encoding = torb || "utf8";
 			cb = callback!;
 		}
 		const normalizedPath = this.normalizePath(file);
@@ -109,58 +109,85 @@ export class FS {
 			.then(dirHandle => dirHandle.getFileHandle(fileName as string, { create: true }))
 			.then(fileHandle => fileHandle.createWritable())
 			.then(async writable => {
-				let dataToWrite: string | ArrayBuffer | Blob;
-				switch (type) {
-					case "arraybuffer":
-						if (typeof content === "string") {
-							dataToWrite = new TextEncoder().encode(content).buffer;
-						} else if (content instanceof ArrayBuffer) {
-							dataToWrite = content;
-						} else if (content instanceof Blob) {
-							dataToWrite = await content.arrayBuffer();
-						} else {
-							dataToWrite = new ArrayBuffer(0);
-						}
-						break;
-					case "blob":
-						if (content instanceof Blob) {
-							dataToWrite = content;
-						} else if (typeof content === "string" || content instanceof ArrayBuffer) {
-							dataToWrite = new Blob([content]);
-						} else {
-							dataToWrite = new Blob([]);
-						}
-						break;
-					case "base64":
-						if (typeof content === "string") {
-							const binary = atob(content);
-							const len = binary.length;
-							const bytes = new Uint8Array(len);
-							for (let i = 0; i < len; i++) {
-								bytes[i] = binary.charCodeAt(i);
+				let toWrite: string | ArrayBuffer | Blob | ArrayBufferLike | BlobPart[];
+				if (!torb || typeof torb === "function") {
+					if (typeof content === "string") {
+						toWrite = content;
+						encoding = "utf8";
+					} else if (content instanceof ArrayBuffer) {
+						toWrite = content;
+						encoding = "arraybuffer";
+					} else if (content instanceof Uint8Array) {
+						toWrite = content.buffer;
+						encoding = "arraybuffer";
+					} else if (content instanceof Blob) {
+						toWrite = content;
+						encoding = "blob";
+					} else {
+						toWrite = String(content);
+						encoding = "utf8";
+					}
+				} else {
+					switch (encoding) {
+						case "arraybuffer":
+							if (typeof content === "string") {
+								toWrite = new TextEncoder().encode(content).buffer;
+							} else if (content instanceof ArrayBuffer) {
+								toWrite = content;
+							} else if (content instanceof Uint8Array) {
+								toWrite = content.buffer;
+							} else if (content instanceof Blob) {
+								toWrite = await content.arrayBuffer();
+							} else {
+								toWrite = new ArrayBuffer(0);
 							}
-							dataToWrite = bytes.buffer;
-						} else if (content instanceof ArrayBuffer) {
-							dataToWrite = content;
-						} else if (content instanceof Blob) {
-							dataToWrite = await content.arrayBuffer();
-						} else {
-							dataToWrite = new ArrayBuffer(0);
-						}
-						break;
-					case "utf8":
-					default:
-						if (typeof content === "string") {
-							dataToWrite = content;
-						} else if (content instanceof ArrayBuffer) {
-							dataToWrite = new TextDecoder().decode(content);
-						} else if (content instanceof Blob) {
-							dataToWrite = await content.text();
-						} else {
-							dataToWrite = String(content);
-						}
+							break;
+						case "blob":
+							if (content instanceof Blob) {
+								toWrite = content;
+							} else if (typeof content === "string" || content instanceof ArrayBuffer || content instanceof Uint8Array) {
+								// @ts-expect-error
+								toWrite = new Blob([content]);
+							} else {
+								toWrite = new Blob([]);
+							}
+							break;
+						case "base64":
+							if (typeof content === "string") {
+								const binary = atob(content);
+								const len = binary.length;
+								const bytes = new Uint8Array(len);
+								for (let i = 0; i < len; i++) {
+									bytes[i] = binary.charCodeAt(i);
+								}
+								toWrite = bytes.buffer;
+							} else if (content instanceof ArrayBuffer) {
+								toWrite = content;
+							} else if (content instanceof Uint8Array) {
+								toWrite = content.buffer;
+							} else if (content instanceof Blob) {
+								toWrite = await content.arrayBuffer();
+							} else {
+								toWrite = new ArrayBuffer(0);
+							}
+							break;
+						case "utf8":
+						default:
+							if (typeof content === "string") {
+								toWrite = content;
+							} else if (content instanceof ArrayBuffer) {
+								toWrite = new TextDecoder().decode(content);
+							} else if (content instanceof Uint8Array) {
+								toWrite = new TextDecoder().decode(content);
+							} else if (content instanceof Blob) {
+								toWrite = await content.text();
+							} else {
+								toWrite = String(content);
+							}
+					}
 				}
-				await writable.write(dataToWrite);
+				// @ts-expect-error
+				await writable.write(toWrite);
 				await writable.close();
 			})
 			.then(() => {
