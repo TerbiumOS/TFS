@@ -63,6 +63,11 @@ export function createFSError(code: keyof typeof FSErrors, path?: string, errMSG
  * @param {string} path The path of the requested File Operation
  */
 export function genError(err: any, path?: string) {
+	if (err && typeof err.name === "undefined") {
+		const ogerr = err;
+		err = {};
+		err.name = String(ogerr);
+	}
 	if (err && err.name === "NotFoundError") {
 		return createFSError("ENOENT", path);
 	} else if (err && err.name === "TypeMismatchError") {

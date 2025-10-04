@@ -19,7 +19,61 @@ interface FSStats {
 	isFile: () => boolean;
 	uid: number;
 	gid: number;
+	mode: number;
 }
+
+export const FSConstants = {
+	O_RDONLY: 0,
+	O_WRONLY: 1,
+	O_RDWR: 2,
+	S_IFMT: 61440,
+	S_IFREG: 32768,
+	S_IFDIR: 16384,
+	S_IFCHR: 8192,
+	S_IFBLK: 24576,
+	S_IFIFO: 4096,
+	S_IFLNK: 40960,
+	S_IFSOCK: 49152,
+	O_CREAT: 512,
+	O_EXCL: 2048,
+	O_NOCTTY: 131072,
+	O_TRUNC: 1024,
+	O_APPEND: 8,
+	O_DIRECTORY: 1048576,
+	O_NOFOLLOW: 256,
+	O_SYNC: 128,
+	O_DSYNC: 4194304,
+	O_SYMLINK: 2097152,
+	O_NONBLOCK: 4,
+	S_IRWXU: 448,
+	S_IRUSR: 256,
+	S_IWUSR: 128,
+	S_IXUSR: 64,
+	S_IRWXG: 56,
+	S_IRGRP: 32,
+	S_IWGRP: 16,
+	S_IXGRP: 8,
+	S_IRWXO: 7,
+	S_IROTH: 4,
+	S_IWOTH: 2,
+	S_IXOTH: 1,
+	F_OK: 0,
+	R_OK: 4,
+	W_OK: 2,
+	X_OK: 1,
+	UV_FS_COPYFILE_EXCL: 1,
+	COPYFILE_EXCL: 1,
+};
+
+export const updPerms = async (handle: FileSystemDirectoryHandle, perms: { [key: string]: { perms: string[]; uid: number; gid: number } }) => {
+	const fileHandle = await handle.getFileHandle(".TFS_STORE", { create: true });
+	const store = await fileHandle.getFile();
+	const currentPerms = JSON.parse(await store.text());
+	const updatedPerms = { ...currentPerms, ...perms };
+	const writable = await fileHandle.createWritable();
+	await writable.write(JSON.stringify(updatedPerms, null, 2));
+	await writable.close();
+};
 
 /**
  * The TFS File System Operations Class
@@ -28,11 +82,37 @@ export class FS {
 	handle: FileSystemDirectoryHandle;
 	currPath: string;
 	shell: Shell;
+	perms: { [key: string]: { perms: string[]; uid: number; gid: number } } = {};
+	constants = FSConstants;
 
 	constructor(handle: FileSystemDirectoryHandle) {
 		this.handle = handle;
 		this.currPath = "/";
 		this.shell = new Shell(this.handle, this);
+		this.promises.exists(".TFS_STORE").then(async exists => {
+			if (!exists) {
+				const fileHandle = await this.handle.getFileHandle(".TFS_STORE", { create: true });
+				const writable = await fileHandle.createWritable();
+				await writable.write(
+					JSON.stringify(
+						{
+							"/.TFS_STORE": {
+								perms: ["r"],
+								uid: 0,
+								gid: 0,
+							},
+						},
+						null,
+						2,
+					),
+				);
+				await writable.close();
+			}
+			this.perms = await this.promises
+				.readFile(".TFS_STORE", "utf8")
+				.then(data => JSON.parse(data))
+				.catch(() => ({}));
+		});
 	}
 
 	/**
@@ -99,11 +179,13 @@ export class FS {
 		const normalizedPath = this.normalizePath(file);
 		const parts = normalizedPath.split("/").filter(Boolean);
 		let dirPromise = Promise.resolve(this.handle);
-
 		for (let i = 0; i < parts.length - 1; i++) {
 			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(parts[i] as string, { create: true }));
 		}
-
+		if (normalizedPath in this.perms && this.perms[normalizedPath] && !(this.perms[normalizedPath].perms.includes("w") || this.perms[normalizedPath].perms.includes("a"))) {
+			if (cb) cb(genError("SecurityError", normalizedPath));
+			return;
+		}
 		const fileName = parts[parts.length - 1];
 		dirPromise
 			.then(dirHandle => dirHandle.getFileHandle(fileName as string, { create: true }))
@@ -188,6 +270,8 @@ export class FS {
 				}
 				// @ts-expect-error
 				await writable.write(toWrite);
+				updPerms(this.handle, { [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } });
+				this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
 				await writable.close();
 			})
 			.then(() => {
@@ -225,6 +309,10 @@ export class FS {
 			cb = fTypeorcb;
 		}
 		const normalizedPath = this.normalizePath(file);
+		if (normalizedPath in this.perms && this.perms[normalizedPath] && !(this.perms[normalizedPath].perms.includes("r") || this.perms[normalizedPath].perms.includes("a"))) {
+			if (cb) cb(genError("SecurityError", normalizedPath), null);
+			return;
+		}
 		const parts = normalizedPath.split("/").filter(Boolean);
 		let dirPromise: Promise<FileSystemDirectoryHandle> = Promise.resolve(this.handle);
 		for (let i = 0; i < parts.length - 1; i++) {
@@ -295,6 +383,8 @@ export class FS {
 				.catch(err => {
 					callback(genError(err, dir));
 				});
+			updPerms(this.handle, { [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } });
+			this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
 		}
 	}
 
@@ -327,7 +417,7 @@ export class FS {
 								callback(null, entries);
 							} else {
 								const [name] = result.value;
-								entries.push(name);
+								if (name !== ".TFS_STORE") entries.push(name);
 								next();
 							}
 						})
@@ -373,6 +463,7 @@ export class FS {
 				isFile: () => false,
 				uid: 0,
 				gid: 0,
+				mode: 0o40755,
 			});
 			return;
 		}
@@ -382,6 +473,17 @@ export class FS {
 			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(parts[i] as string));
 		}
 		const lastPart = parts[parts.length - 1];
+		const perms = this.perms[normalizedPath];
+		let perm: number;
+		if (perms && perms.perms.includes("a")) {
+			perm = 0o100700;
+		} else if (perms && perms.perms.includes("w")) {
+			perm = 0o100200;
+		} else if (perms && perms.perms.includes("r")) {
+			perm = 0o100400;
+		} else {
+			perm = 0o100644;
+		}
 		dirPromise
 			.then(dirHandle =>
 				dirHandle
@@ -404,6 +506,7 @@ export class FS {
 												isSymbolicLink: () => true,
 												isDirectory: () => stats.type === "DIRECTORY",
 												isFile: () => stats.type !== "DIRECTORY",
+												mode: 0o120777,
 											});
 										}
 									});
@@ -425,6 +528,7 @@ export class FS {
 										isFile: () => file.type !== "DIRECTORY",
 										uid: 0,
 										gid: 0,
+										mode: perm,
 									});
 								}
 							}),
@@ -452,6 +556,7 @@ export class FS {
 										isFile: () => false,
 										uid: 0,
 										gid: 0,
+										mode: perm,
 									}),
 								)
 								.catch(dirErr => {
@@ -478,6 +583,7 @@ export class FS {
 										isFile: () => false,
 										uid: 0,
 										gid: 0,
+										mode: perm,
 									}),
 								)
 								.catch(dirErr => {
@@ -524,6 +630,7 @@ export class FS {
 				isFile: () => false,
 				uid: 0,
 				gid: 0,
+				mode: 0o40755,
 			});
 			return;
 		}
@@ -533,6 +640,17 @@ export class FS {
 			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(parts[i] as string));
 		}
 		const lastPart = parts[parts.length - 1];
+		const perms = this.perms[normalizedPath];
+		let perm: number;
+		if (perms && perms.perms.includes("a")) {
+			perm = 0o100700;
+		} else if (perms && perms.perms.includes("w")) {
+			perm = 0o100200;
+		} else if (perms && perms.perms.includes("r")) {
+			perm = 0o100400;
+		} else {
+			perm = 0o100644;
+		}
 		dirPromise
 			.then(dirHandle =>
 				dirHandle
@@ -556,6 +674,7 @@ export class FS {
 								isFile: () => file.type !== "DIRECTORY",
 								uid: 0,
 								gid: 0,
+								mode: perm,
 							}),
 						),
 					)
@@ -581,6 +700,7 @@ export class FS {
 										isFile: () => false,
 										uid: 0,
 										gid: 0,
+										mode: perm,
 									}),
 								)
 								.catch(dirErr => {
@@ -607,6 +727,7 @@ export class FS {
 										isFile: () => false,
 										uid: 0,
 										gid: 0,
+										mode: perm,
 									}),
 								)
 								.catch(dirErr => {
@@ -637,6 +758,11 @@ export class FS {
 		this.readFile(path, "arraybuffer", (err, existingData) => {
 			if (err && err.name !== "NotFoundError") {
 				callback(err);
+				return;
+			}
+			const normalizedPath = this.normalizePath(path);
+			if (normalizedPath in this.perms && this.perms[normalizedPath] && !(this.perms[normalizedPath].perms.includes("w") || this.perms[normalizedPath].perms.includes("a"))) {
+				if (callback) callback(genError("SecurityError", normalizedPath));
 				return;
 			}
 			let newData: ArrayBuffer;
@@ -789,6 +915,10 @@ export class FS {
 		for (let i = 0; i < parts.length - 1; i++) {
 			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(parts[i] as string));
 		}
+		if (normalizedPath in this.perms && this.perms[normalizedPath] && !(this.perms[normalizedPath].perms.includes("w") || this.perms[normalizedPath].perms.includes("a"))) {
+			if (callback) callback(genError("SecurityError", normalizedPath));
+			return;
+		}
 		const fileName = parts[parts.length - 1];
 		dirPromise
 			.then(dirHandle => {
@@ -820,6 +950,10 @@ export class FS {
 			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(parts[i] as string));
 		}
 		const dirName = parts[parts.length - 1];
+		if (normalizedPath in this.perms && this.perms[normalizedPath] && !(this.perms[normalizedPath].perms.includes("w") || this.perms[normalizedPath].perms.includes("a"))) {
+			if (callback) callback(genError("SecurityError", normalizedPath));
+			return;
+		}
 		dirPromise
 			.then(dirHandle => {
 				return dirHandle.removeEntry(dirName as string);
@@ -861,7 +995,6 @@ export class FS {
 							if (err) {
 								if (callback) callback(genError(err, oldP));
 							} else {
-								// TODO: Make this recursively delete the dir if its not empty
 								Promise.all(entries.map((entry: string) => this.promises.rename(oldP + "/" + entry, newP + "/" + entry)))
 									.then(() => this.shell.promises.rm(oldP, { recursive: true }))
 									.then(() => {
@@ -926,8 +1059,41 @@ export class FS {
 		});
 	}
 
-	// Access is coming in v1.1 with the introduction of permissions and other missing FD features. for now this will just return true
-	access = this.exists;
+	/**
+	 * Checks the accessibility of a file or directory at the given path with the specified mode.
+	 * @param path - The path to the file or directory to check.
+	 * @param mode - The accessibility mode to check (defaults to `this.constants.F_OK`). Can be a combination of `F_OK`, `R_OK`, `W_OK`, and `X_OK`.
+	 * @param callback - Optional callback function that receives an error if access is denied or the path does not exist, or `null` if access is allowed.
+	 * @example
+	 * tfs.fs.access("/documents/file.txt", tfs.fs.constants.R_OK | tfs.fs.constants.W_OK, (err) => {
+	 *   if (err) {
+	 *     console.error(`Access denied or file does not exist: ${err}`);
+	 *   } else {
+	 *     console.log("Access granted");
+	 *   }
+	 * });
+	 */
+	access(path: string, mode: number = this.constants.F_OK, callback?: (err: Error | null) => void) {
+		const normalizedPath = this.normalizePath(path);
+		const perms = this.perms[normalizedPath];
+		if (!perms) {
+			this.exists(normalizedPath, exists => {
+				if (callback) callback(exists ? null : genError("NotFoundError", normalizedPath));
+			});
+			return;
+		}
+		let allowed = true;
+		if (mode & this.constants.R_OK) {
+			allowed = allowed && (perms.perms.includes("r") || perms.perms.includes("a"));
+		}
+		if (mode & this.constants.W_OK) {
+			allowed = allowed && (perms.perms.includes("w") || perms.perms.includes("a"));
+		}
+		if (mode & this.constants.X_OK) {
+			allowed = allowed && perms.perms.includes("x");
+		}
+		if (callback) callback(allowed ? null : genError("SecurityError", normalizedPath));
+	}
 
 	/**
 	 * Reads the target of a symbolic link.
@@ -1035,6 +1201,99 @@ export class FS {
 				this.copyFile(oldPath, newPath, callback);
 			}
 		});
+	}
+
+	/**
+	 * Changes the permissions of a file or directory.
+	 * @param path - The path to the file or directory.
+	 * @param mode - The new permissions mode.
+	 * @param callback - Optional callback function called when the operation completes. Receives an error if one occurs, or null on success.
+	 * @example
+	 * tfs.fs.chmod("/documents/file.txt", 0o644, (err) => {
+	 *   if (err) throw err;
+	 *   console.log("Permissions changed successfully!");
+	 * });
+	 */
+	chmod(path: string, mode: number, callback?: (err: Error | null) => void) {
+		const normalizedPath = this.normalizePath(path);
+		const permsEntry = this.perms[normalizedPath] || this.perms[path];
+		if (!permsEntry) {
+			if (callback) callback(genError("NotFoundError", normalizedPath));
+			return;
+		}
+		const perms: string[] = [];
+		if (mode & this.constants.S_IRUSR || mode & this.constants.S_IRGRP || mode & this.constants.S_IROTH) perms.push("r");
+		if (mode & this.constants.S_IWUSR || mode & this.constants.S_IWGRP || mode & this.constants.S_IWOTH) perms.push("w");
+		if (mode & this.constants.S_IXUSR || mode & this.constants.S_IXGRP || mode & this.constants.S_IXOTH) perms.push("x");
+		if (mode & this.constants.O_APPEND) perms.push("a");
+		permsEntry.perms = perms;
+		updPerms(this.handle, { [normalizedPath]: permsEntry });
+		this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
+		if (callback) callback(null);
+	}
+
+	/**
+	 * Changes the ownership of a file or directory.
+	 * @param path - The path to the file or directory.
+	 * @param uid - The new user ID.
+	 * @param gid - The new group ID.
+	 * @param callback - Optional callback function called when the operation completes. Receives an error if one occurs, or null on success.
+	 * @example
+	 * tfs.fs.chown("/documents/file.txt", 1000, 1000, (err) => {
+	 *   if (err) throw err;
+	 *   console.log("Ownership changed successfully!");
+	 * });
+	 */
+	chown(path: string, uid: number, gid: number, callback?: (err: Error | null) => void) {
+		const normalizedPath = this.normalizePath(path);
+		const permsEntry = this.perms[normalizedPath] || this.perms[path];
+		if (!permsEntry) {
+			if (callback) callback(genError("NotFoundError", normalizedPath));
+			return;
+		}
+		permsEntry.uid = uid;
+		permsEntry.gid = gid;
+		updPerms(this.handle, { [normalizedPath]: permsEntry });
+		this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
+		if (callback) callback(null);
+	}
+
+	/**
+	 * Checks if the current user has execute (x), access (a), or read (r) permissions for the given path.
+	 * Returns true if any of those permissions are present, similar to NodeFS's fs.access.
+	 * @param path - The path to check permissions for.
+	 * @example
+	 * const canExecute = tfs.fs.getaxxr("/documents/file.txt");
+	 * console.log("Can execute/access/read:", canExecute);
+	 */
+	getaxxr(path: string, callback?: (canAccess: boolean) => void) {
+		const normalizedPath = this.normalizePath(path);
+		const perms = this.perms[normalizedPath];
+		if (!perms || !Array.isArray(perms.perms)) return false;
+		const canAccess = perms.perms.includes("x") || perms.perms.includes("a") || perms.perms.includes("r");
+		if (callback) callback(canAccess);
+	}
+
+	/**
+	 * Sets execute (x), access (a), or read (r) permission for the given path, similar to NodeFS's chmod.
+	 * Adds "x" permission if not present.
+	 * @param path - The path to set permissions for.
+	 * @example
+	 * const changed = tfs.fs.setxxr("/documents/file.txt");
+	 * console.log("Permissions changed:", changed);
+	 */
+	setxxr(path: string, callback?: (changed: boolean) => void) {
+		const normalizedPath = this.normalizePath(path);
+		const perms = this.perms[normalizedPath];
+		if (!perms || !Array.isArray(perms.perms)) return false;
+		if (!perms.perms.includes("x")) {
+			perms.perms.push("x");
+			updPerms(this.handle, { [normalizedPath]: perms });
+			this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
+			if (callback) callback(true);
+		} else {
+			if (callback) callback(false);
+		}
 	}
 
 	promises = {
@@ -1200,9 +1459,9 @@ export class FS {
 				});
 			});
 		},
-		access: (path: string) => {
-			return new Promise<boolean>(resolve => {
-				this.exists(path, exists => {
+		access: (path: string, mode: number) => {
+			return new Promise(resolve => {
+				this.access(path, mode, exists => {
 					resolve(exists);
 				});
 			});
@@ -1312,6 +1571,45 @@ export class FS {
 		cp: (oldPath: string, newPath: string) => {
 			return new Promise<void>((resolve, reject) => {
 				this.cp(oldPath, newPath, err => {
+					if (err) {
+						reject(err);
+					} else {
+						resolve();
+					}
+				});
+			});
+		},
+		/**
+		 * Changes the ownership of a file or directory.
+		 * @param path - The path to the file or directory.
+		 * @param uid - The new user ID.
+		 * @param gid - The new group ID.
+		 * @returns A promise that resolves when the ownership has been changed.
+		 * @example
+		 * await tfs.fs.promises.chown("/documents/file.txt", 1000, 1000);
+		 */
+		chown: (path: string, uid: number, gid: number) => {
+			return new Promise<void>((resolve, reject) => {
+				this.chown(path, uid, gid, err => {
+					if (err) {
+						reject(err);
+					} else {
+						resolve();
+					}
+				});
+			});
+		},
+		/**
+		 * Changes the permissions of a file or directory.
+		 * @param path - The path to the file or directory.
+		 * @param mode - The new permissions mode.
+		 * @returns A promise that resolves when the permissions have been changed.
+		 * @example
+		 * await tfs.fs.promises.chmod("/documents/file.txt", 0o644);
+		 */
+		chmod: (path: string, mode: number) => {
+			return new Promise<void>((resolve, reject) => {
+				this.chmod(path, mode, err => {
 					if (err) {
 						reject(err);
 					} else {

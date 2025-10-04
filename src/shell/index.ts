@@ -147,6 +147,13 @@ export class Shell {
 				callback(genError(err || "NotFoundError"), null);
 				return;
 			}
+			if (scriptPath in this.fs.perms && this.fs.perms[scriptPath]) {
+				const perms = this.fs.perms[scriptPath].perms;
+				if (!perms.includes("x") && !perms.includes("a")) {
+					callback(genError("SecurityError", scriptPath), null);
+					return;
+				}
+			}
 			try {
 				const context = {
 					fs: this.fs,
