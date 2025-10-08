@@ -80,6 +80,13 @@ export declare class Shell {
 	 * Creates a new empty file.
 	 * @param path - The path to the file to create.
 	 * @param callback - Callback function called with the result or error.
+	 * @example
+	 * tfs.shell.touch('/documents/newfile.txt', (err) => {
+	 *   if (err) {
+	 *     console.error(err);
+	 *   }
+	 *   console.log('File created');
+	 * });
 	 */
 	touch(path: string, callback: (error: Error | null) => void): void;
 	/**
@@ -141,6 +148,45 @@ export declare class Shell {
 		},
 		callback: (error: Error | null) => void,
 	): void;
+	/**
+	 * Creates a directory and any necessary parent directories.
+	 * @param path - The path to the directory to create.
+	 * @param callback - Callback function called with the result or error.
+	 * @example
+	 * tfs.shell.mkdirp('/documents/newdir/subdir', (err) => {
+	 *   if (err) {
+	 *     console.error(err);
+	 *   }
+	 *   console.log('Directories created');
+	 * });
+	 */
+	mkdirp(path: string, callback: (error: Error | null) => void): void;
+	/**
+	 * Creates a temporary directory.
+	 * @param callback - Callback function called with the result or error.
+	 * @example
+	 * tfs.shell.tempDir((err, dirPath) => {
+	 *   if (err) {
+	 *     console.error(err);
+	 *   }
+	 *   console.log(dirPath);
+	 * });
+	 */
+	tempDir(callback: (error: Error | null, dirPath?: string) => void): void;
+	/**
+	 * Formats the File System (Deletes all files and directories).
+	 * NOTE this is not reversible and should be used with caution.
+	 * Also note that this is not in the Filer or NodeFS spec and is a TFS Specific method.
+	 * @param callback - Callback function called with the result or error.
+	 * @example
+	 * tfs.shell.format((err) => {
+	 *   if (err) {
+	 *     console.error(err);
+	 *   }
+	 *   console.log('File system formatted');
+	 * });
+	 */
+	format(callback?: (error: Error | null) => void): void;
 	promises: {
 		/**
 		 * Changes the current working directory.
@@ -221,6 +267,31 @@ export declare class Shell {
 				recursive: boolean;
 			},
 		) => Promise<void>;
+		/**
+		 * Creates a directory and any necessary parent directories.
+		 * @param path - The path to the directory to create.
+		 * @returns A promise that resolves when the directory has been created.
+		 * @example
+		 * await tfs.shell.promises.mkdirp('/documents/newdir/subdir');
+		 */
+		mkdirp: (path: string) => Promise<void>;
+		/**
+		 * Creates a temporary directory.
+		 * @returns A promise that resolves with the path of the created temporary directory.
+		 * @example
+		 * const dirPath = await tfs.shell.promises.tempDir();
+		 * console.log(dirPath); // Path of the created temporary directory
+		 */
+		tempDir: () => Promise<string>;
+		/**
+		 * Formats the File System (Deletes all files and directories).
+		 * NOTE this is not reversible and should be used with caution.
+		 * Also note that this is not in the Filer or NodeFS spec and is a TFS Specific method.
+		 * @returns A promise that resolves when the file system has been formatted.
+		 * @example
+		 * await tfs.shell.promises.format();
+		 */
+		format: () => Promise<void>;
 	};
 }
 //# sourceMappingURL=index.d.ts.map

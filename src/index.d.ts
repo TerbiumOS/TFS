@@ -12,6 +12,7 @@ export declare class TFS {
 	buffer: typeof Buffer;
 	shell: Shell;
 	version: string;
+	/** Polyfill for legacy applications that still expect shell as a uninitialized class */
 	sh?: typeof Shell;
 	constructor(handle: FileSystemDirectoryHandle);
 	/**

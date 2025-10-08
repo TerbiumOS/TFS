@@ -3,6 +3,7 @@ interface FSStats {
 	name: string;
 	size: number;
 	type: string;
+	mime: string;
 	ctime: Date | number;
 	mtime: Date | number;
 	atime: Date | number;
@@ -13,7 +14,62 @@ interface FSStats {
 	isSymbolicLink: () => boolean;
 	isDirectory: () => boolean;
 	isFile: () => boolean;
+	uid: number;
+	gid: number;
+	mode: number;
 }
+export declare const FSConstants: {
+	O_RDONLY: number;
+	O_WRONLY: number;
+	O_RDWR: number;
+	S_IFMT: number;
+	S_IFREG: number;
+	S_IFDIR: number;
+	S_IFCHR: number;
+	S_IFBLK: number;
+	S_IFIFO: number;
+	S_IFLNK: number;
+	S_IFSOCK: number;
+	O_CREAT: number;
+	O_EXCL: number;
+	O_NOCTTY: number;
+	O_TRUNC: number;
+	O_APPEND: number;
+	O_DIRECTORY: number;
+	O_NOFOLLOW: number;
+	O_SYNC: number;
+	O_DSYNC: number;
+	O_SYMLINK: number;
+	O_NONBLOCK: number;
+	S_IRWXU: number;
+	S_IRUSR: number;
+	S_IWUSR: number;
+	S_IXUSR: number;
+	S_IRWXG: number;
+	S_IRGRP: number;
+	S_IWGRP: number;
+	S_IXGRP: number;
+	S_IRWXO: number;
+	S_IROTH: number;
+	S_IWOTH: number;
+	S_IXOTH: number;
+	F_OK: number;
+	R_OK: number;
+	W_OK: number;
+	X_OK: number;
+	UV_FS_COPYFILE_EXCL: number;
+	COPYFILE_EXCL: number;
+};
+export declare const updPerms: (
+	handle: FileSystemDirectoryHandle,
+	perms: {
+		[key: string]: {
+			perms: string[];
+			uid: number;
+			gid: number;
+		};
+	},
+) => Promise<void>;
 /**
  * The TFS File System Operations Class
  */
@@ -21,6 +77,55 @@ export declare class FS {
 	handle: FileSystemDirectoryHandle;
 	currPath: string;
 	shell: Shell;
+	perms: {
+		[key: string]: {
+			perms: string[];
+			uid: number;
+			gid: number;
+		};
+	};
+	constants: {
+		O_RDONLY: number;
+		O_WRONLY: number;
+		O_RDWR: number;
+		S_IFMT: number;
+		S_IFREG: number;
+		S_IFDIR: number;
+		S_IFCHR: number;
+		S_IFBLK: number;
+		S_IFIFO: number;
+		S_IFLNK: number;
+		S_IFSOCK: number;
+		O_CREAT: number;
+		O_EXCL: number;
+		O_NOCTTY: number;
+		O_TRUNC: number;
+		O_APPEND: number;
+		O_DIRECTORY: number;
+		O_NOFOLLOW: number;
+		O_SYNC: number;
+		O_DSYNC: number;
+		O_SYMLINK: number;
+		O_NONBLOCK: number;
+		S_IRWXU: number;
+		S_IRUSR: number;
+		S_IWUSR: number;
+		S_IXUSR: number;
+		S_IRWXG: number;
+		S_IRGRP: number;
+		S_IWGRP: number;
+		S_IXGRP: number;
+		S_IRWXO: number;
+		S_IROTH: number;
+		S_IWOTH: number;
+		S_IXOTH: number;
+		F_OK: number;
+		R_OK: number;
+		W_OK: number;
+		X_OK: number;
+		UV_FS_COPYFILE_EXCL: number;
+		COPYFILE_EXCL: number;
+	};
 	constructor(handle: FileSystemDirectoryHandle);
 	/**
 	 * Normalizes the given path, resolving relative segments like "." and "..".
@@ -38,14 +143,21 @@ export declare class FS {
 	 * Writes data to a file at the specified path. If the file or any parent directories do not exist, they are created.
 	 * @param file - The absolute or relative path to the file to write.
 	 * @param content - The content to write to the file. Can be a string, ArrayBuffer, or Blob.
+	 * @param type - The type of data being written: "utf8" for string, "arraybuffer" for ArrayBuffer, "blob" for Blob, or "base64" for a base64-encoded string. Defaults to "utf8".
 	 * @param callback - Optional callback function called when the operation completes. Receives an error if one occurs, or null on success.
 	 * @example
 	 * tfs.fs.writeFile("/documents/file.txt", "Hello, World!", (err) => {
 	 *   if (err) throw err;
 	 *   console.log("File written successfully!");
 	 * });
+	 *
+	 * // You can also specify the type of content being written:
+	 * tfs.fs.writeFile("/documents/file.txt", "Hello, World!", "utf8", (err) => {
+	 *   if (err) throw err;
+	 *   console.log("File written successfully!");
+	 * });
 	 */
-	writeFile(file: string, content: string | ArrayBuffer | Blob, callback?: (err: Error | null) => void): void;
+	writeFile(file: string, content: string | ArrayBuffer | Blob | Uint8Array, torb?: "utf8" | "base64" | "arraybuffer" | "blob" | ((err: Error | null) => void), callback?: (err: Error | null) => void): void;
 	/**
 	 * Reads the contents of a file at the specified path.
 	 * @param file - The absolute or relative path to the file to read.
@@ -111,6 +223,18 @@ export declare class FS {
 	 * });
 	 */
 	lstat(path: string, callback: (err: Error | null, stats?: FSStats | null) => void): void;
+	/**
+	 * Appends data to a file. If the file does not exist, it is created.
+	 * @param path - The absolute or relative path to the file to append data to.
+	 * @param data - The data to append to the file.
+	 * @param callback - The callback function to call when the operation is complete.
+	 * @example
+	 * tfs.fs.appendFile("/documents/file.txt", "Additional content", (err) => {
+	 *   if (err) throw err;
+	 *   console.log("Data appended successfully!");
+	 * });
+	 */
+	appendFile(path: string, data: string | ArrayBuffer | ArrayBufferView, callback: (err: Error | null) => void): void;
 	/**
 	 * Watches for changes to a file or directory.
 	 * @param path - The absolute or relative path of the file or directory to watch.
@@ -195,6 +319,21 @@ export declare class FS {
 	 */
 	symlink(target: string, path: string, type?: "file" | "dir" | "junction", callback?: (err: Error | null) => void): void;
 	/**
+	 * Checks the accessibility of a file or directory at the given path with the specified mode.
+	 * @param path - The path to the file or directory to check.
+	 * @param mode - The accessibility mode to check (defaults to `this.constants.F_OK`). Can be a combination of `F_OK`, `R_OK`, `W_OK`, and `X_OK`.
+	 * @param callback - Optional callback function that receives an error if access is denied or the path does not exist, or `null` if access is allowed.
+	 * @example
+	 * tfs.fs.access("/documents/file.txt", tfs.fs.constants.R_OK | tfs.fs.constants.W_OK, (err) => {
+	 *   if (err) {
+	 *     console.error(`Access denied or file does not exist: ${err}`);
+	 *   } else {
+	 *     console.log("Access granted");
+	 *   }
+	 * });
+	 */
+	access(path: string, mode?: number, callback?: (err: Error | null) => void): void;
+	/**
 	 * Reads the target of a symbolic link.
 	 * @param path - The absolute or relative path of the symlink to read.
 	 * @param callback - Callback function called with the result. Receives an error (or null) and the target path of the symlink.
@@ -229,6 +368,49 @@ export declare class FS {
 	 * });
 	 */
 	cp(oldPath: string, newPath: string, callback?: (err: Error | null) => void): void;
+	/**
+	 * Changes the permissions of a file or directory.
+	 * @param path - The path to the file or directory.
+	 * @param mode - The new permissions mode.
+	 * @param callback - Optional callback function called when the operation completes. Receives an error if one occurs, or null on success.
+	 * @example
+	 * tfs.fs.chmod("/documents/file.txt", 0o644, (err) => {
+	 *   if (err) throw err;
+	 *   console.log("Permissions changed successfully!");
+	 * });
+	 */
+	chmod(path: string, mode: number, callback?: (err: Error | null) => void): void;
+	/**
+	 * Changes the ownership of a file or directory.
+	 * @param path - The path to the file or directory.
+	 * @param uid - The new user ID.
+	 * @param gid - The new group ID.
+	 * @param callback - Optional callback function called when the operation completes. Receives an error if one occurs, or null on success.
+	 * @example
+	 * tfs.fs.chown("/documents/file.txt", 1000, 1000, (err) => {
+	 *   if (err) throw err;
+	 *   console.log("Ownership changed successfully!");
+	 * });
+	 */
+	chown(path: string, uid: number, gid: number, callback?: (err: Error | null) => void): void;
+	/**
+	 * Checks if the current user has execute (x), access (a), or read (r) permissions for the given path.
+	 * Returns true if any of those permissions are present, similar to NodeFS's fs.access.
+	 * @param path - The path to check permissions for.
+	 * @example
+	 * const canExecute = tfs.fs.getaxxr("/documents/file.txt");
+	 * console.log("Can execute/access/read:", canExecute);
+	 */
+	getaxxr(path: string, callback?: (canAccess: boolean) => void): false | undefined;
+	/**
+	 * Sets execute (x), access (a), or read (r) permission for the given path, similar to NodeFS's chmod.
+	 * Adds "x" permission if not present.
+	 * @param path - The path to set permissions for.
+	 * @example
+	 * const changed = tfs.fs.setxxr("/documents/file.txt");
+	 * console.log("Permissions changed:", changed);
+	 */
+	setxxr(path: string, callback?: (changed: boolean) => void): false | undefined;
 	promises: {
 		/**
 		 * Writes data to a file.
@@ -238,7 +420,7 @@ export declare class FS {
 		 * @example
 		 * await tfs.fs.promises.writeFile("/documents/file.txt", "Hello, World!");
 		 */
-		writeFile: (file: string, content: string | ArrayBuffer | Blob) => Promise<void>;
+		writeFile: (file: string, content: string | ArrayBuffer | Blob, type?: "utf8" | "arraybuffer" | "blob" | "base64") => Promise<void>;
 		/**
 		 * Reads the contents of a file.
 		 * @param file - The path to the file.
@@ -247,7 +429,7 @@ export declare class FS {
 		 * @example
 		 * const data = await tfs.fs.promises.readFile("/documents/file.txt", "utf8");
 		 */
-		readFile: (file: string, type: "utf8" | "arraybuffer" | "blob" | "base64") => Promise<any>;
+		readFile: (file: string, type?: "utf8" | "arraybuffer" | "blob" | "base64") => Promise<any>;
 		/**
 		 * Creates a new directory.
 		 * @param dir - The path to the directory to create.
@@ -281,6 +463,15 @@ export declare class FS {
 		 */
 		lstat: (path: string) => Promise<FSStats | null>;
 		/**
+		 * Appends data to a file. If the file does not exist, it is created.
+		 * @param path - The absolute or relative path to the file to append data to.
+		 * @param data - The data to append to the file.
+		 * @returns A promise that resolves when the data has been appended.
+		 * @example
+		 * await tfs.fs.promises.appendFile("/documents/file.txt", "Additional content");
+		 */
+		appendFile: (path: string, data: string | ArrayBuffer | ArrayBufferView) => Promise<void>;
+		/**
 		 * Deletes a file or symlink.
 		 * @param path - The absolute or relative path of the file or symlink to delete.
 		 * @returns A promise that resolves when the file or symlink has been deleted.
@@ -296,6 +487,7 @@ export declare class FS {
 		 * const exists = await tfs.fs.promises.exists("/documents/file.txt");
 		 */
 		exists: (path: string) => Promise<boolean>;
+		access: (path: string, mode: number) => Promise<unknown>;
 		/**
 		 * Deletes an empty directory.
 		 * @param path - The absolute or relative path of the directory to delete.
@@ -349,6 +541,25 @@ export declare class FS {
 		 * await tfs.fs.promises.cp("/documents/sourceFolder", "/documents/destinationFolder");
 		 */
 		cp: (oldPath: string, newPath: string) => Promise<void>;
+		/**
+		 * Changes the ownership of a file or directory.
+		 * @param path - The path to the file or directory.
+		 * @param uid - The new user ID.
+		 * @param gid - The new group ID.
+		 * @returns A promise that resolves when the ownership has been changed.
+		 * @example
+		 * await tfs.fs.promises.chown("/documents/file.txt", 1000, 1000);
+		 */
+		chown: (path: string, uid: number, gid: number) => Promise<void>;
+		/**
+		 * Changes the permissions of a file or directory.
+		 * @param path - The path to the file or directory.
+		 * @param mode - The new permissions mode.
+		 * @returns A promise that resolves when the permissions have been changed.
+		 * @example
+		 * await tfs.fs.promises.chmod("/documents/file.txt", 0o644);
+		 */
+		chmod: (path: string, mode: number) => Promise<void>;
 	};
 }
 export {};

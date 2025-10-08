@@ -17,7 +17,7 @@
 		"test": "cd ./demo && npm run test",
 		"test:install": "cd ./demo && npm i && npm run test",
 		"ci": "cd ./demo && npm i && cd ../ && npm run build",
-		"types": "tsc --declaration --emitDeclarationOnly; npm run fmt",
+		"types": "npx tsc --declaration --emitDeclarationOnly; npm run fmt",
 		"prepublish": "npm run build && npm run types"
 	},
 	"keywords": [
@@ -50,7 +50,6 @@
 		"@biomejs/biome": "^2.2.5",
 		"@rspack/cli": "^1.5.8",
 		"@rspack/core": "^1.5.8",
-		"tsc": "^2.0.4",
 		"typescript": "^5.9.3"
 	},
 	"dependencies": {

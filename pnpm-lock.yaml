@@ -24,9 +24,6 @@ importers:
       '@rspack/core':
         specifier: ^1.5.8
         version: 1.5.8
-      tsc:
-        specifier: ^2.0.4
-        version: 2.0.4
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -1054,10 +1051,6 @@ packages:
     engines: {node: '>=10.0'}
     peerDependencies:
       tslib: '2'
-
-  tsc@2.0.4:
-    resolution: {integrity: sha512-fzoSieZI5KKJVBYGvwbVZs/J5za84f2lSTLPYf6AGiIf43tZ3GNrI1QzTLcjtyDDP4aLxd46RTZq1nQxe7+k5Q==}
-    hasBin: true
 
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
@@ -2231,8 +2224,6 @@ snapshots:
   tree-dump@1.1.0(tslib@2.8.1):
     dependencies:
       tslib: 2.8.1
-
-  tsc@2.0.4: {}
 
   tslib@2.8.1: {}
 
