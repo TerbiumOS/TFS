@@ -420,29 +420,29 @@ export class Shell {
 	 *   console.log('File system formatted');
 	 * });
 	 */
-	format(callback: (error: Error | null) => void) {
+	format(callback?: (error: Error | null) => void) {
 		this.fs.readdir("/", (err, entries) => {
 			if (err) {
-				callback(genError(err));
+				if (callback) callback(genError(err));
 				return;
 			}
 			for (const entry of entries as string[]) {
 				this.fs.stat(entry, (err, stats) => {
 					if (err) {
-						callback(genError(err, entry));
+						if (callback) callback(genError(err, entry));
 						return;
 					}
 					if (stats && stats.type === "DIRECTORY") {
 						this.rm(entry, { recursive: true }, err => {
 							if (err) {
-								callback(genError(err, entry));
+								if (callback) callback(genError(err, entry));
 								return;
 							}
 						});
 					} else {
 						this.fs.unlink(entry, err => {
 							if (err) {
-								callback(genError(err, entry));
+								if (callback) callback(genError(err, entry));
 								return;
 							}
 						});
@@ -450,7 +450,7 @@ export class Shell {
 				});
 			}
 			console.log(`[TFS] Operation Completed at: ${new Date().toISOString()}`);
-			callback(null);
+			if (callback) callback(null);
 		});
 	}
 

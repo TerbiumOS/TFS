@@ -514,8 +514,8 @@ export class FS {
 									callback(null, {
 										name: file.name,
 										size: file.size,
-										mime: file.type === "DIRECTORY" ? "DIRECTORY" : "FILE",
-										type: file.type,
+										mime: file.type,
+										type: file.type === "DIRECTORY" ? "DIRECTORY" : "FILE",
 										ctime: new Date(file.lastModified),
 										mtime: new Date(file.lastModified),
 										atime: new Date(),
@@ -660,8 +660,8 @@ export class FS {
 							callback(null, {
 								name: file.name,
 								size: file.size,
-								type: file.type,
-								mime: file.type === "DIRECTORY" ? "DIRECTORY" : "FILE",
+								mime: file.type,
+								type: file.type === "DIRECTORY" ? "DIRECTORY" : "FILE",
 								ctime: new Date(file.lastModified),
 								mtime: new Date(file.lastModified),
 								atime: new Date(),
