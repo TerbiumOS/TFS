@@ -411,47 +411,40 @@ export class Shell {
 	 * Formats the File System (Deletes all files and directories).
 	 * NOTE this is not reversible and should be used with caution.
 	 * Also note that this is not in the Filer or NodeFS spec and is a TFS Specific method.
-	 * @param callback - Callback function called with the result or error.
 	 * @example
-	 * tfs.shell.format((err) => {
-	 *   if (err) {
-	 *     console.error(err);
-	 *   }
-	 *   console.log('File system formatted');
-	 * });
+	 * await tfs.shell.format();
 	 */
-	format(callback?: (error: Error | null) => void) {
-		this.fs.readdir("/", (err, entries) => {
-			if (err) {
-				if (callback) callback(genError(err));
-				return;
+	async format() {
+		const entries = await this.fs.promises.readdir("/");
+		for (const entry of entries as string[]) {
+			const stats = await this.fs.promises.stat(entry);
+			if (stats && stats.type === "DIRECTORY") {
+				await this.promises.rm(entry, { recursive: true });
+			} else {
+				await this.fs.promises.unlink(entry);
 			}
-			for (const entry of entries as string[]) {
-				this.fs.stat(entry, (err, stats) => {
-					if (err) {
-						if (callback) callback(genError(err, entry));
-						return;
-					}
-					if (stats && stats.type === "DIRECTORY") {
-						this.rm(entry, { recursive: true }, err => {
-							if (err) {
-								if (callback) callback(genError(err, entry));
-								return;
-							}
-						});
-					} else {
-						this.fs.unlink(entry, err => {
-							if (err) {
-								if (callback) callback(genError(err, entry));
-								return;
-							}
-						});
-					}
-				});
-			}
-			console.log(`[TFS] Operation Completed at: ${new Date().toISOString()}`);
-			if (callback) callback(null);
-		});
+		}
+		const fileHandle = await this.handle.getFileHandle(".TFS_STORE", { create: true });
+		const writable = await fileHandle.createWritable();
+		await writable.write(
+			JSON.stringify(
+				{
+					"/.TFS_STORE": {
+						perms: ["r"],
+						uid: 0,
+						gid: 0,
+					},
+				},
+				null,
+				2,
+			),
+		);
+		await writable.close();
+		this.fs.perms = await this.fs.promises
+			.readFile(".TFS_STORE", "utf8")
+			.then(data => JSON.parse(data))
+			.catch(() => ({}));
+		console.log(`[TFS] Operation Completed at: ${new Date().toISOString()}`);
 	}
 
 	promises = {
@@ -621,25 +614,6 @@ export class Shell {
 						reject(err);
 					} else {
 						resolve(dirPath as string);
-					}
-				});
-			});
-		},
-		/**
-		 * Formats the File System (Deletes all files and directories).
-		 * NOTE this is not reversible and should be used with caution.
-		 * Also note that this is not in the Filer or NodeFS spec and is a TFS Specific method.
-		 * @returns A promise that resolves when the file system has been formatted.
-		 * @example
-		 * await tfs.shell.promises.format();
-		 */
-		format: (): Promise<void> => {
-			return new Promise((resolve, reject) => {
-				this.format(err => {
-					if (err) {
-						reject(err);
-					} else {
-						resolve();
 					}
 				});
 			});

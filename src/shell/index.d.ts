@@ -177,16 +177,10 @@ export declare class Shell {
 	 * Formats the File System (Deletes all files and directories).
 	 * NOTE this is not reversible and should be used with caution.
 	 * Also note that this is not in the Filer or NodeFS spec and is a TFS Specific method.
-	 * @param callback - Callback function called with the result or error.
 	 * @example
-	 * tfs.shell.format((err) => {
-	 *   if (err) {
-	 *     console.error(err);
-	 *   }
-	 *   console.log('File system formatted');
-	 * });
+	 * await tfs.shell.format();
 	 */
-	format(callback?: (error: Error | null) => void): void;
+	format(): Promise<void>;
 	promises: {
 		/**
 		 * Changes the current working directory.
@@ -283,15 +277,6 @@ export declare class Shell {
 		 * console.log(dirPath); // Path of the created temporary directory
 		 */
 		tempDir: () => Promise<string>;
-		/**
-		 * Formats the File System (Deletes all files and directories).
-		 * NOTE this is not reversible and should be used with caution.
-		 * Also note that this is not in the Filer or NodeFS spec and is a TFS Specific method.
-		 * @returns A promise that resolves when the file system has been formatted.
-		 * @example
-		 * await tfs.shell.promises.format();
-		 */
-		format: () => Promise<void>;
 	};
 }
 //# sourceMappingURL=index.d.ts.map

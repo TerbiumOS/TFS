@@ -332,30 +332,32 @@ export class FS {
 							if (linkType === "file") {
 								this.readFile(target as string, type, cb);
 							} else {
-								cb(genError(new Error("TypeMismatchError"), file.name), null);
+								if (cb) cb(genError(new Error("TypeMismatchError"), file.name), null);
 							}
 							return;
 						}
 						if (type === "arraybuffer") {
-							file.arrayBuffer().then(data => cb(null, data));
+							file.arrayBuffer().then(data => {
+								if (cb) cb(null, data);
+							});
 						} else if (type === "blob") {
-							cb(null, file);
+							if (cb) cb(null, file);
 						} else if (type === "base64") {
 							const reader = new FileReader();
 							reader.onload = () => {
-								cb(null, reader.result);
+								if (cb) cb(null, reader.result);
 							};
 							reader.readAsDataURL(file);
 						} else {
-							cb(null, text);
+							if (cb) cb(null, text);
 						}
 					})
 					.catch(err => {
-						cb(genError(err, file.name), null);
+						if (cb) cb(genError(err, file.name), null);
 					});
 			})
 			.catch(err => {
-				cb(genError(err, file), null);
+				if (cb) cb(genError(err, file), null);
 			});
 	}
 

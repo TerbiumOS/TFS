@@ -40,7 +40,7 @@ export default defineConfig([
 			},
 			module: true,
 		},
-		target: "node",
+		target: ["node", "web"],
 		module: {
 			rules: [
 				{
