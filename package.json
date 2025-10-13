@@ -18,7 +18,7 @@
 		"test:install": "cd ./demo && npm i && npm run test",
 		"ci": "cd ./demo && npm i && cd ../ && npm run build",
 		"types": "npx tsc --declaration --emitDeclarationOnly && npm run fmt",
-		"publish": "npm run build && npm run types && npm publish --access public"
+		"pub": "npm run build && npm run types && npm publish --access public"
 	},
 	"keywords": [
 		"fs",
