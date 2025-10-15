@@ -415,15 +415,8 @@ export class Shell {
 	 * await tfs.shell.format();
 	 */
 	async format() {
-		const entries = await this.fs.promises.readdir("/");
-		for (const entry of entries as string[]) {
-			const stats = await this.fs.promises.stat(entry);
-			if (stats && stats.type === "DIRECTORY") {
-				await this.promises.rm(entry, { recursive: true });
-			} else {
-				await this.fs.promises.unlink(entry);
-			}
-		}
+		// @ts-expect-error This api exists but is not typed in ES2024 for whatever reason
+		await (await navigator.storage.getDirectory()).remove({ recursive: true });
 		const fileHandle = await this.handle.getFileHandle(".TFS_STORE", { create: true });
 		const writable = await fileHandle.createWritable();
 		await writable.write(

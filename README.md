@@ -9,7 +9,7 @@ Initializing TFS is slightly different than Filer. TFS.init must be called whene
 The TFS Object consists of: FS, Path, Shell, and Buffer.
 The Buffer utility is actually the same as Filer and is powered by the [Ferros Buffer Library](https://github.com/feross/buffer) with the same exact syntax as node:buffer and Filer.Buffer
 
-To load TFS, simply run:
+To load TFS conviently, simply run:
 
 ```js
 const tfs = await tfs.init()
@@ -19,6 +19,13 @@ If you need a specific module from TFS, you can desctructure the object for the 
 
 ```js
 const { fs } = await tfs.init()
+```
+
+Or if you do not wish to use one of the following methods to initialize TFS, you can also use the constructor as normal;
+
+```js
+const handle = await navigator.storage.getDirectory();
+const tfs = new tfs(handle);
 ```
 
 The TFS Shell works slightly different than the Filer Shell, it is already instantiated so you do not need to create a new instance of the Shell and you can directly call it as:
