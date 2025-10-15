@@ -65,11 +65,21 @@ export const FSConstants = {
 	COPYFILE_EXCL: 1,
 };
 
-export const updPerms = async (handle: FileSystemDirectoryHandle, perms: { [key: string]: { perms: string[]; uid: number; gid: number } }) => {
+export const updPerms = async (handle: FileSystemDirectoryHandle, perms?: { [key: string]: { perms: string[]; uid: number; gid: number } | boolean }) => {
 	const fileHandle = await handle.getFileHandle(".TFS_STORE", { create: true });
 	const store = await fileHandle.getFile();
 	const currentPerms = JSON.parse(await store.text());
-	const updatedPerms = { ...currentPerms, ...perms };
+	let updatedPerms = { ...currentPerms };
+	if (perms) {
+		for (const key in perms) {
+			const value = perms[key];
+			if (value === true) {
+				delete updatedPerms[key];
+			} else if (value !== false) {
+				updatedPerms[key] = value;
+			}
+		}
+	}
 	const writable = await fileHandle.createWritable();
 	await writable.write(JSON.stringify(updatedPerms, null, 2));
 	await writable.close();
@@ -921,6 +931,7 @@ export class FS {
 			if (callback) callback(genError("SecurityError", normalizedPath));
 			return;
 		}
+		updPerms(this.handle, { [normalizedPath]: true });
 		const fileName = parts[parts.length - 1];
 		dirPromise
 			.then(dirHandle => {
@@ -956,6 +967,7 @@ export class FS {
 			if (callback) callback(genError("SecurityError", normalizedPath));
 			return;
 		}
+		updPerms(this.handle, { [normalizedPath]: true });
 		dirPromise
 			.then(dirHandle => {
 				return dirHandle.removeEntry(dirName as string);
@@ -989,34 +1001,33 @@ export class FS {
 				return;
 			}
 			if (stats.type === "DIRECTORY") {
-				this.mkdir(newP, err => {
-					if (err) {
-						if (callback) callback(genError(err, newP));
-					} else {
-						this.readdir(oldP, (err, entries) => {
-							if (err) {
-								if (callback) callback(genError(err, oldP));
-							} else {
-								Promise.all(entries.map((entry: string) => this.promises.rename(oldP + "/" + entry, newP + "/" + entry)))
-									.then(() => this.shell.promises.rm(oldP, { recursive: true }))
-									.then(() => {
-										if (callback) callback(null);
-									})
-									.catch(err => {
-										if (callback) callback(genError(err, oldPath));
-									});
-							}
-						});
+				this.cp(oldP, newP, cpErr => {
+					if (cpErr) {
+						if (callback) callback(genError(cpErr, newP));
+						return;
 					}
+					this.shell.promises
+						.rm(oldP, { recursive: true })
+						.then(() => {
+							if (callback) callback(null);
+						})
+						.catch(rmErr => {
+							if (callback) callback(genError(rmErr, oldP));
+						});
 				});
 			} else {
-				return this.copyFile(oldP, newP, err => {
-					if (err) {
-						if (callback) callback(genError(err, oldPath));
-					} else {
-						if (callback) callback(null);
-						this.unlink(oldP);
+				this.copyFile(oldP, newP, copyErr => {
+					if (copyErr) {
+						if (callback) callback(genError(copyErr, oldP));
+						return;
 					}
+					this.unlink(oldP, unlinkErr => {
+						if (unlinkErr) {
+							if (callback) callback(genError(unlinkErr, oldP));
+						} else {
+							if (callback) callback(null);
+						}
+					});
 				});
 			}
 		});
