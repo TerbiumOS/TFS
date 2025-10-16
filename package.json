@@ -39,7 +39,7 @@
 	],
 	"exports": {
 		".": {
-			"import": "./dist/node/tfs.js",
+			"import": "./lib/index.mjs",
 			"types": "./lib/index.d.ts"
 		},
 		"./browser": {
