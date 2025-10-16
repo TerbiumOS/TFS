@@ -32,6 +32,9 @@ export default defineConfig([
 		entry: {
 			tfs: "./src/index.ts",
 		},
+		experiments: {
+			outputModule: true,
+		},
 		output: {
 			path: path.resolve(process.cwd(), "dist/node"),
 			filename: "tfs.js",
