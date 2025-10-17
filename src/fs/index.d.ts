@@ -60,14 +60,22 @@ export declare const FSConstants: {
 	UV_FS_COPYFILE_EXCL: number;
 	COPYFILE_EXCL: number;
 };
-export declare const updPerms: (
+export declare const fdS: unique symbol;
+export type TFSFD = {
+	fd: number;
+	[fdS]: string;
+};
+export declare const updMeta: (
 	handle: FileSystemDirectoryHandle,
-	perms: {
-		[key: string]: {
-			perms: string[];
-			uid: number;
-			gid: number;
-		};
+	perms?: {
+		[key: string]:
+			| {
+					perms: string[];
+					uid: number;
+					gid: number;
+					c?: number;
+			  }
+			| boolean;
 	},
 ) => Promise<void>;
 /**
@@ -82,6 +90,7 @@ export declare class FS {
 			perms: string[];
 			uid: number;
 			gid: number;
+			c?: number;
 		};
 	};
 	constants: {
