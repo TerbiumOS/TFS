@@ -4,7 +4,31 @@ The drop in Filer replacement you’ve been waiting for. Completely Typed and Bu
 
 ## Usage
 
-Initializing TFS is slightly different than Filer. TFS.init must be called whenever loading the TFS module.
+Initializing TFS is slightly different than Filer. Below are the instructions on how to get TFS running.
+
+First, either get the static files from the [github releases](https://github.com/TerbiumOS/TFS/releases) or you can download TFS via the npm package at `@terbiumos/tfs`. 
+
+If your working with Vite, Express, etc to host the files you can import the web compiled files for TFS via the `tfsPath` import
+
+```js
+import { tfsPath } from "@terbiumos/tfs";
+// tfsPath is the path of the web folder of the TFS files
+```
+
+Aditionally, All of the classes are also typed and can be imported as such if needed:
+
+```js
+import { FSType } from "@terbiumos/tfs";
+// Types for tfs.fs
+```
+
+If you do not wish to host the files and use it directly in your code you can import the TFS class directly however you **MUST** use `@terbiumos/tfs/browser` for this import:
+
+```js
+import { TFS } from "@terbiumos/tfs/browser";
+
+const { fs } = await tfs.init();
+```
 
 The TFS Object consists of: FS, Path, Shell, and Buffer.
 The Buffer utility is actually the same as Filer and is powered by the [Ferros Buffer Library](https://github.com/feross/buffer) with the same exact syntax as node:buffer and Filer.Buffer
@@ -20,6 +44,8 @@ If you need a specific module from TFS, you can desctructure the object for the 
 ```js
 const { fs } = await tfs.init()
 ```
+
+If your working in a non asyncronous workspace or a service worker, you can use `tfs.initSw()` to initialize the TFS object on window (or in service worker contexts, self) automatically:
 
 Or if you do not wish to use one of the following methods to initialize TFS, you can also use the constructor as normal;
 

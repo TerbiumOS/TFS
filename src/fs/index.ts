@@ -65,7 +65,13 @@ export const FSConstants = {
 	COPYFILE_EXCL: 1,
 };
 
-export const updPerms = async (handle: FileSystemDirectoryHandle, perms?: { [key: string]: { perms: string[]; uid: number; gid: number } | boolean }) => {
+export const fdS = Symbol.for("TFSFD");
+export type TFSFD = {
+	fd: number;
+	[fdS]: string;
+};
+
+export const updMeta = async (handle: FileSystemDirectoryHandle, perms?: { [key: string]: { perms: string[]; uid: number; gid: number; c?: number } | boolean }) => {
 	const fileHandle = await handle.getFileHandle(".TFS_STORE", { create: true });
 	const store = await fileHandle.getFile();
 	const currentPerms = JSON.parse(await store.text());
@@ -92,7 +98,7 @@ export class FS {
 	handle: FileSystemDirectoryHandle;
 	currPath: string;
 	shell: Shell;
-	perms: { [key: string]: { perms: string[]; uid: number; gid: number } } = {};
+	perms: { [key: string]: { perms: string[]; uid: number; gid: number; c?: number } } = {};
 	constants = FSConstants;
 
 	constructor(handle: FileSystemDirectoryHandle) {
@@ -110,6 +116,7 @@ export class FS {
 								perms: ["r"],
 								uid: 0,
 								gid: 0,
+								c: Date.now(),
 							},
 						},
 						null,
@@ -280,8 +287,11 @@ export class FS {
 				}
 				// @ts-expect-error
 				await writable.write(toWrite);
-				updPerms(this.handle, { [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } });
-				this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
+				if (!this.perms[normalizedPath]) {
+					console.log("No Perms, Making new perms");
+					updMeta(this.handle, { [normalizedPath]: { perms: ["a"], uid: 0, gid: 0, c: Date.now() } });
+					this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0, c: Date.now() } };
+				}
 				await writable.close();
 			})
 			.then(() => {
@@ -395,8 +405,8 @@ export class FS {
 				.catch(err => {
 					callback(genError(err, dir));
 				});
-			updPerms(this.handle, { [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } });
-			this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
+			updMeta(this.handle, { [normalizedPath]: { perms: ["a"], uid: 0, gid: 0, c: Date.now() } });
+			this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0, c: Date.now() } };
 		}
 	}
 
@@ -463,11 +473,11 @@ export class FS {
 				size: 0,
 				mime: "DIRECTORY",
 				type: "DIRECTORY",
-				ctime: 0,
+				ctime: new Date(this.perms[normalizedPath]?.c!),
 				mtime: 0,
-				atime: 0,
-				atimeMs: 0,
-				ctimeMs: 0,
+				atime: new Date(),
+				atimeMs: new Date().getTime(),
+				ctimeMs: new Date(this.perms[normalizedPath]?.c!).getTime(),
 				mtimeMs: 0,
 				dev: "OPFS",
 				isSymbolicLink: () => false,
@@ -514,11 +524,15 @@ export class FS {
 												...stats,
 												dev: "OPFS",
 												mime: "application/symlink",
-												type: "symlink",
+												type: "SYMLINK",
 												isSymbolicLink: () => true,
 												isDirectory: () => stats.type === "DIRECTORY",
 												isFile: () => stats.type !== "DIRECTORY",
-												mode: 0o120777,
+												mode: this.perms[normalizedPath]?.uid! || 0o120777,
+												atime: new Date(),
+												atimeMs: new Date().getTime(),
+												ctime: new Date(this.perms[normalizedPath]?.c!),
+												ctimeMs: new Date(this.perms[normalizedPath]?.c!).getTime(),
 											});
 										}
 									});
@@ -528,10 +542,10 @@ export class FS {
 										size: file.size,
 										mime: file.type,
 										type: file.type === "DIRECTORY" ? "DIRECTORY" : "FILE",
-										ctime: new Date(file.lastModified),
+										ctime: new Date(this.perms[normalizedPath]?.c!),
 										mtime: new Date(file.lastModified),
 										atime: new Date(),
-										ctimeMs: file.lastModified,
+										ctimeMs: new Date(this.perms[normalizedPath]?.c!).getTime(),
 										mtimeMs: file.lastModified,
 										atimeMs: new Date().getTime(),
 										dev: "OPFS",
@@ -556,11 +570,11 @@ export class FS {
 										size: 0,
 										type: "DIRECTORY",
 										mime: "DIRECTORY",
-										ctime: 0,
+										ctime: new Date(this.perms[normalizedPath]?.c!),
 										mtime: 0,
-										atime: 0,
-										atimeMs: 0,
-										ctimeMs: 0,
+										atime: new Date(),
+										atimeMs: new Date().getTime(),
+										ctimeMs: new Date(this.perms[normalizedPath]?.c!).getTime(),
 										mtimeMs: 0,
 										dev: "OPFS",
 										isSymbolicLink: () => false,
@@ -583,12 +597,12 @@ export class FS {
 										size: 0,
 										type: "DIRECTORY",
 										mime: "DIRECTORY",
-										ctime: 0,
+										ctime: new Date(this.perms[normalizedPath]?.c!),
 										mtime: 0,
-										atime: 0,
-										ctimeMs: 0,
+										atime: new Date(),
+										ctimeMs: new Date(this.perms[normalizedPath]?.c!).getTime(),
 										mtimeMs: 0,
-										atimeMs: 0,
+										atimeMs: new Date().getTime(),
 										dev: "OPFS",
 										isSymbolicLink: () => false,
 										isDirectory: () => true,
@@ -931,7 +945,7 @@ export class FS {
 			if (callback) callback(genError("SecurityError", normalizedPath));
 			return;
 		}
-		updPerms(this.handle, { [normalizedPath]: true });
+		updMeta(this.handle, { [normalizedPath]: true });
 		const fileName = parts[parts.length - 1];
 		dirPromise
 			.then(dirHandle => {
@@ -967,7 +981,7 @@ export class FS {
 			if (callback) callback(genError("SecurityError", normalizedPath));
 			return;
 		}
-		updPerms(this.handle, { [normalizedPath]: true });
+		updMeta(this.handle, { [normalizedPath]: true });
 		dirPromise
 			.then(dirHandle => {
 				return dirHandle.removeEntry(dirName as string);
@@ -1240,7 +1254,7 @@ export class FS {
 		if (mode & this.constants.S_IXUSR || mode & this.constants.S_IXGRP || mode & this.constants.S_IXOTH) perms.push("x");
 		if (mode & this.constants.O_APPEND) perms.push("a");
 		permsEntry.perms = perms;
-		updPerms(this.handle, { [normalizedPath]: permsEntry });
+		updMeta(this.handle, { [normalizedPath]: permsEntry });
 		this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
 		if (callback) callback(null);
 	}
@@ -1266,7 +1280,7 @@ export class FS {
 		}
 		permsEntry.uid = uid;
 		permsEntry.gid = gid;
-		updPerms(this.handle, { [normalizedPath]: permsEntry });
+		updMeta(this.handle, { [normalizedPath]: permsEntry });
 		this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
 		if (callback) callback(null);
 	}
@@ -1301,7 +1315,7 @@ export class FS {
 		if (!perms || !Array.isArray(perms.perms)) return false;
 		if (!perms.perms.includes("x")) {
 			perms.perms.push("x");
-			updPerms(this.handle, { [normalizedPath]: perms });
+			updMeta(this.handle, { [normalizedPath]: perms });
 			this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
 			if (callback) callback(true);
 		} else {
