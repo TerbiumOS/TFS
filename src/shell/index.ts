@@ -426,6 +426,7 @@ export class Shell {
 						perms: ["r"],
 						uid: 0,
 						gid: 0,
+						c: Date.now(),
 					},
 				},
 				null,

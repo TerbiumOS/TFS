@@ -71,7 +71,7 @@ export type TFSFD = {
 	[fdS]: string;
 };
 
-export const updMeta = async (handle: FileSystemDirectoryHandle, perms?: { [key: string]: { perms: string[]; uid: number; gid: number; c?: number } | boolean }) => {
+export const updMeta = async (handle: FileSystemDirectoryHandle, perms?: { [key: string]: { perms: string[]; uid: number; gid: number } | boolean }) => {
 	const fileHandle = await handle.getFileHandle(".TFS_STORE", { create: true });
 	const store = await fileHandle.getFile();
 	const currentPerms = JSON.parse(await store.text());
@@ -98,7 +98,7 @@ export class FS {
 	handle: FileSystemDirectoryHandle;
 	currPath: string;
 	shell: Shell;
-	perms: { [key: string]: { perms: string[]; uid: number; gid: number; c?: number } } = {};
+	perms: { [key: string]: { perms: string[]; uid: number; gid: number } } = {};
 	constants = FSConstants;
 
 	constructor(handle: FileSystemDirectoryHandle) {
@@ -116,7 +116,6 @@ export class FS {
 								perms: ["r"],
 								uid: 0,
 								gid: 0,
-								c: Date.now(),
 							},
 						},
 						null,
@@ -288,9 +287,8 @@ export class FS {
 				// @ts-expect-error
 				await writable.write(toWrite);
 				if (!this.perms[normalizedPath]) {
-					console.log("No Perms, Making new perms");
-					updMeta(this.handle, { [normalizedPath]: { perms: ["a"], uid: 0, gid: 0, c: Date.now() } });
-					this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0, c: Date.now() } };
+					updMeta(this.handle, { [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } });
+					this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
 				}
 				await writable.close();
 			})
@@ -405,8 +403,8 @@ export class FS {
 				.catch(err => {
 					callback(genError(err, dir));
 				});
-			updMeta(this.handle, { [normalizedPath]: { perms: ["a"], uid: 0, gid: 0, c: Date.now() } });
-			this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0, c: Date.now() } };
+			updMeta(this.handle, { [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } });
+			this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
 		}
 	}
 
@@ -473,11 +471,11 @@ export class FS {
 				size: 0,
 				mime: "DIRECTORY",
 				type: "DIRECTORY",
-				ctime: new Date(this.perms[normalizedPath]?.c!),
+				ctime: 0,
 				mtime: 0,
 				atime: new Date(),
 				atimeMs: new Date().getTime(),
-				ctimeMs: new Date(this.perms[normalizedPath]?.c!).getTime(),
+				ctimeMs: 0,
 				mtimeMs: 0,
 				dev: "OPFS",
 				isSymbolicLink: () => false,
@@ -531,8 +529,6 @@ export class FS {
 												mode: this.perms[normalizedPath]?.uid! || 0o120777,
 												atime: new Date(),
 												atimeMs: new Date().getTime(),
-												ctime: new Date(this.perms[normalizedPath]?.c!),
-												ctimeMs: new Date(this.perms[normalizedPath]?.c!).getTime(),
 											});
 										}
 									});
@@ -542,10 +538,10 @@ export class FS {
 										size: file.size,
 										mime: file.type,
 										type: file.type === "DIRECTORY" ? "DIRECTORY" : "FILE",
-										ctime: new Date(this.perms[normalizedPath]?.c!),
+										ctime: new Date(file.lastModified),
 										mtime: new Date(file.lastModified),
 										atime: new Date(),
-										ctimeMs: new Date(this.perms[normalizedPath]?.c!).getTime(),
+										ctimeMs: file.lastModified,
 										mtimeMs: file.lastModified,
 										atimeMs: new Date().getTime(),
 										dev: "OPFS",
@@ -570,11 +566,11 @@ export class FS {
 										size: 0,
 										type: "DIRECTORY",
 										mime: "DIRECTORY",
-										ctime: new Date(this.perms[normalizedPath]?.c!),
+										ctime: 0,
 										mtime: 0,
 										atime: new Date(),
 										atimeMs: new Date().getTime(),
-										ctimeMs: new Date(this.perms[normalizedPath]?.c!).getTime(),
+										ctimeMs: 0,
 										mtimeMs: 0,
 										dev: "OPFS",
 										isSymbolicLink: () => false,
@@ -597,10 +593,10 @@ export class FS {
 										size: 0,
 										type: "DIRECTORY",
 										mime: "DIRECTORY",
-										ctime: new Date(this.perms[normalizedPath]?.c!),
+										ctime: 0,
 										mtime: 0,
 										atime: new Date(),
-										ctimeMs: new Date(this.perms[normalizedPath]?.c!).getTime(),
+										ctimeMs: 0,
 										mtimeMs: 0,
 										atimeMs: new Date().getTime(),
 										dev: "OPFS",
@@ -646,8 +642,8 @@ export class FS {
 				mime: "DIRECTORY",
 				ctime: 0,
 				mtime: 0,
-				atime: 0,
-				atimeMs: 0,
+				atime: new Date(),
+				atimeMs: new Date().getTime(),
 				ctimeMs: 0,
 				mtimeMs: 0,
 				dev: "OPFS",
@@ -716,10 +712,10 @@ export class FS {
 										mime: "DIRECTORY",
 										ctime: 0,
 										mtime: 0,
-										atime: 0,
+										atime: new Date(),
 										ctimeMs: 0,
 										mtimeMs: 0,
-										atimeMs: 0,
+										atimeMs: new Date().getTime(),
 										dev: "OPFS",
 										isSymbolicLink: () => false,
 										isDirectory: () => true,
@@ -743,8 +739,8 @@ export class FS {
 										mime: "DIRECTORY",
 										ctime: 0,
 										mtime: 0,
-										atime: 0,
-										atimeMs: 0,
+										atime: new Date(),
+										atimeMs: new Date().getTime(),
 										ctimeMs: 0,
 										mtimeMs: 0,
 										dev: "OPFS",
