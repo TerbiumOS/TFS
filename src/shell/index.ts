@@ -78,25 +78,25 @@ export class Shell {
 	 *   console.log(data); // Both of the File's Contents
 	 * });
 	 */
-	cat(path: string | string[], callback: (error: Error | null, data: string | null) => void) {
+	cat(path: string | string[], callback?: (error: Error | null, data: string | null) => void) {
 		const paths = Array.isArray(path) ? path : [path];
 		const fp = paths.map(p => this.path.join(this.cwd, p));
 		let results: string[] = [];
 		let completed = 0;
 		if (fp.length === 0) {
-			callback(genError("NotFoundError"), null);
+			if (callback) callback(genError("NotFoundError"), null);
 			return;
 		}
 		fp.forEach((p, idx) => {
 			this.fs.readFile(p, "utf8", (err: Error | null, data: string | null) => {
 				if (err) {
-					callback(genError(err), null);
+					if (callback) callback(genError(err), null);
 				} else {
 					results[idx] = data as string;
 				}
 				completed++;
 				if (completed === fp.length) {
-					callback(null, results.join(""));
+					if (callback) callback(null, results.join(""));
 				}
 			});
 		});
@@ -116,13 +116,13 @@ export class Shell {
 	 *   console.log(entries);
 	 * });
 	 */
-	ls(path: string, callback: (error: Error | null, entries: string[] | null) => void) {
+	ls(path: string, callback?: (error: Error | null, entries: string[] | null) => void) {
 		const newPath = this.path.join(this.cwd, path);
 		this.fs.readdir(newPath, (err, entries) => {
 			if (err) {
-				callback(genError(err), null);
+				if (callback) callback(genError(err), null);
 			} else {
-				callback(null, entries as string[]);
+				if (callback) callback(null, entries as string[]);
 			}
 		});
 	}
@@ -140,17 +140,17 @@ export class Shell {
 	 *   console.log(result); // Result from the script
 	 * });
 	 */
-	exec(path: string, args: any[] = [], callback: (error: Error | null, result: any) => void) {
+	exec(path: string, args: any[] = [], callback?: (error: Error | null, result: any) => void) {
 		const scriptPath = this.path.join(this.cwd, path);
 		this.fs.readFile(scriptPath, "utf8", (err: Error | null, code: string | null) => {
 			if (err || !code) {
-				callback(genError(err || "NotFoundError"), null);
+				if (callback) callback(genError(err || "NotFoundError"), null);
 				return;
 			}
 			if (scriptPath in this.fs.perms && this.fs.perms[scriptPath]) {
 				const perms = this.fs.perms[scriptPath].perms;
 				if (!perms.includes("x") && !perms.includes("a")) {
-					callback(genError("SecurityError", scriptPath), null);
+					if (callback) callback(genError("SecurityError", scriptPath), null);
 					return;
 				}
 			}
@@ -163,7 +163,7 @@ export class Shell {
 				const func = new Function("fs", "args", "callback", code);
 				func(context.fs, context.args, context.callback);
 			} catch (e) {
-				callback(e as Error, null);
+				if (callback) callback(e as Error, null);
 			}
 		});
 	}
@@ -180,13 +180,13 @@ export class Shell {
 	 *   console.log('File created');
 	 * });
 	 */
-	touch(path: string, callback: (error: Error | null) => void) {
+	touch(path: string, callback?: (error: Error | null) => void) {
 		const newPath = this.path.join(this.cwd, path);
 		this.fs.writeFile(newPath, "", "utf8", (err: Error | null) => {
 			if (err) {
-				callback(genError(err));
+				if (callback) callback(genError(err));
 			} else {
-				callback(null);
+				if (callback) callback(null);
 			}
 		});
 	}
@@ -214,7 +214,7 @@ export class Shell {
 	 *   console.log(results); // Array of files and directories in /documents
 	 * });
 	 */
-	find(path: string, options: { name: string }, callback: (error: Error | null, results: string[] | null) => void) {
+	find(path: string, options: { name: string }, callback?: (error: Error | null, results: string[] | null) => void) {
 		const newPath = this.path.join(this.cwd, path);
 		let results: string[] = [];
 		let pendingDirs = 0;
@@ -225,7 +225,7 @@ export class Shell {
 				if (err) {
 					if (!finished) {
 						finished = true;
-						callback(genError(err), null);
+						if (callback) callback(genError(err), null);
 					}
 					return;
 				}
@@ -233,7 +233,7 @@ export class Shell {
 				if (!pending) {
 					if (--pendingDirs === 0 && !finished) {
 						finished = true;
-						callback(null, results);
+						if (callback) callback(null, results);
 					}
 					return;
 				}
@@ -243,7 +243,7 @@ export class Shell {
 						if (err) {
 							if (!finished) {
 								finished = true;
-								callback(genError(err, entryPath), null);
+								if (callback) callback(genError(err, entryPath), null);
 							}
 							return;
 						}
@@ -256,7 +256,7 @@ export class Shell {
 						if (!--pending) {
 							if (--pendingDirs === 0 && !finished) {
 								finished = true;
-								callback(null, results);
+								if (callback) callback(null, results);
 							}
 						}
 					});
@@ -288,21 +288,21 @@ export class Shell {
 	 *   console.log('Directory and its contents are deleted');
 	 * });
 	 */
-	rm(path: string, options: { recursive: boolean }, callback: (error: Error | null) => void) {
+	rm(path: string, options: { recursive: boolean }, callback?: (error: Error | null) => void) {
 		const newPath = this.path.join(this.cwd, path);
 		if (options.recursive) {
 			this.fs.readdir(newPath, (err, entries) => {
 				if (err) {
-					callback(genError(err));
+					if (callback) callback(genError(err));
 					return;
 				}
 				let pending = (entries as string[]).length;
 				if (!pending) {
 					this.fs.rmdir(newPath, err => {
 						if (err) {
-							callback(genError(err));
+							if (callback) callback(genError(err));
 						} else {
-							callback(null);
+							if (callback) callback(null);
 						}
 					});
 					return;
@@ -314,7 +314,7 @@ export class Shell {
 						if (errorOccurred) return;
 						if (err) {
 							errorOccurred = true;
-							callback(genError(err, entryPath));
+							if (callback) callback(genError(err, entryPath));
 							return;
 						}
 						if (stats && stats.type === "DIRECTORY") {
@@ -322,15 +322,15 @@ export class Shell {
 								if (errorOccurred) return;
 								if (err) {
 									errorOccurred = true;
-									callback(err);
+									if (callback) callback(err);
 									return;
 								}
 								if (!--pending) {
 									this.fs.rmdir(newPath, err => {
 										if (err) {
-											callback(genError(err));
+											if (callback) callback(genError(err));
 										} else {
-											callback(null);
+											if (callback) callback(null);
 										}
 									});
 								}
@@ -340,15 +340,15 @@ export class Shell {
 								if (errorOccurred) return;
 								if (err) {
 									errorOccurred = true;
-									callback(genError(err, entryPath));
+									if (callback) callback(genError(err, entryPath));
 									return;
 								}
 								if (!--pending) {
 									this.fs.rmdir(newPath, err => {
 										if (err) {
-											callback(genError(err));
+											if (callback) callback(genError(err));
 										} else {
-											callback(null);
+											if (callback) callback(null);
 										}
 									});
 								}
@@ -360,9 +360,9 @@ export class Shell {
 		} else {
 			this.fs.unlink(newPath, err => {
 				if (err) {
-					callback(genError(err));
+					if (callback) callback(genError(err));
 				} else {
-					callback(null);
+					if (callback) callback(null);
 				}
 			});
 		}
@@ -380,7 +380,7 @@ export class Shell {
 	 *   console.log('Directories created');
 	 * });
 	 */
-	mkdirp(path: string, callback: (error: Error | null) => void) {
+	mkdirp(path: string, callback?: (error: Error | null) => void) {
 		this.fs.mkdir(path, callback);
 	}
 
@@ -395,14 +395,14 @@ export class Shell {
 	 *   console.log(dirPath);
 	 * });
 	 */
-	tempDir(callback: (error: Error | null, dirPath?: string) => void) {
+	tempDir(callback?: (error: Error | null, dirPath?: string) => void) {
 		const name = `temp-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 		const path = this.path.join(this.cwd, name);
 		this.fs.mkdir(path, err => {
 			if (err) {
-				callback(genError(err, path));
+				if (callback) callback(genError(err, path));
 			} else {
-				callback(null, path);
+				if (callback) callback(null, path);
 			}
 		});
 	}

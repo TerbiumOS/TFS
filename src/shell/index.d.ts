@@ -46,7 +46,7 @@ export declare class Shell {
 	 *   console.log(data); // Both of the File's Contents
 	 * });
 	 */
-	cat(path: string | string[], callback: (error: Error | null, data: string | null) => void): void;
+	cat(path: string | string[], callback?: (error: Error | null, data: string | null) => void): void;
 	/**
 	 * Lists the contents of a directory.
 	 * @param path - The path to the directory to list.
@@ -61,7 +61,7 @@ export declare class Shell {
 	 *   console.log(entries);
 	 * });
 	 */
-	ls(path: string, callback: (error: Error | null, entries: string[] | null) => void): void;
+	ls(path: string, callback?: (error: Error | null, entries: string[] | null) => void): void;
 	/**
 	 * Executes a JS File using Eval.
 	 * @param path - The path to the JS file to execute.
@@ -75,7 +75,7 @@ export declare class Shell {
 	 *   console.log(result); // Result from the script
 	 * });
 	 */
-	exec(path: string, args: any[] | undefined, callback: (error: Error | null, result: any) => void): void;
+	exec(path: string, args?: any[], callback?: (error: Error | null, result: any) => void): void;
 	/**
 	 * Creates a new empty file.
 	 * @param path - The path to the file to create.
@@ -88,7 +88,7 @@ export declare class Shell {
 	 *   console.log('File created');
 	 * });
 	 */
-	touch(path: string, callback: (error: Error | null) => void): void;
+	touch(path: string, callback?: (error: Error | null) => void): void;
 	/**
 	 * Finds files in a directory.
 	 * @param path - The path to the directory to search.
@@ -117,7 +117,7 @@ export declare class Shell {
 		options: {
 			name: string;
 		},
-		callback: (error: Error | null, results: string[] | null) => void,
+		callback?: (error: Error | null, results: string[] | null) => void,
 	): void;
 	/**
 	 * Removes a file or directory.
@@ -146,7 +146,7 @@ export declare class Shell {
 		options: {
 			recursive: boolean;
 		},
-		callback: (error: Error | null) => void,
+		callback?: (error: Error | null) => void,
 	): void;
 	/**
 	 * Creates a directory and any necessary parent directories.
@@ -160,7 +160,7 @@ export declare class Shell {
 	 *   console.log('Directories created');
 	 * });
 	 */
-	mkdirp(path: string, callback: (error: Error | null) => void): void;
+	mkdirp(path: string, callback?: (error: Error | null) => void): void;
 	/**
 	 * Creates a temporary directory.
 	 * @param callback - Callback function called with the result or error.
@@ -172,7 +172,7 @@ export declare class Shell {
 	 *   console.log(dirPath);
 	 * });
 	 */
-	tempDir(callback: (error: Error | null, dirPath?: string) => void): void;
+	tempDir(callback?: (error: Error | null, dirPath?: string) => void): void;
 	/**
 	 * Formats the File System (Deletes all files and directories).
 	 * NOTE this is not reversible and should be used with caution.

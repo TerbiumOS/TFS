@@ -73,7 +73,6 @@ export declare const updMeta: (
 					perms: string[];
 					uid: number;
 					gid: number;
-					c?: number;
 			  }
 			| boolean;
 	},
@@ -90,7 +89,6 @@ export declare class FS {
 			perms: string[];
 			uid: number;
 			gid: number;
-			c?: number;
 		};
 	};
 	constants: {
