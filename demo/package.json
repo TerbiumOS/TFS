@@ -12,10 +12,10 @@
 	"license": "ISC",
 	"packageManager": "pnpm@10.18.3",
 	"dependencies": {
-		"@types/node": "^24.8.1",
+		"@types/node": "^24.10.0",
 		"filer": "^1.4.1",
 		"tsx": "^4.20.6",
-		"vite": "^7.1.10",
+		"vite": "^7.1.12",
 		"vite-plugin-static-copy": "^3.1.4"
 	}
 }

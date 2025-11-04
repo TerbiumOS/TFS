@@ -1,6 +1,6 @@
 import { createFSError, genError } from "../fs/errors";
 import { Path } from "../path/index";
-import { FS } from "../fs/index";
+import { FS, type FSStats } from "../fs/index";
 import { minimatch } from "minimatch";
 
 /**
@@ -116,14 +116,37 @@ export class Shell {
 	 *   console.log(entries);
 	 * });
 	 */
-	ls(path: string, callback?: (error: Error | null, entries: string[] | null) => void) {
+	ls(path: string, callback?: (error: Error | null, entries: FSStats[] | [] | null) => void) {
 		const newPath = this.path.join(this.cwd, path);
 		this.fs.readdir(newPath, (err, entries) => {
 			if (err) {
 				if (callback) callback(genError(err), null);
-			} else {
-				if (callback) callback(null, entries as string[]);
+				return;
 			}
+			const list = (entries as string[]) || [];
+			if (list.length === 0) {
+				if (callback) callback(null, []);
+				return;
+			}
+			const results: FSStats[] = [];
+			let completed = 0;
+			let errorOccurred = false;
+			list.forEach((entry, idx) => {
+				const entryPath = this.path.join(newPath, entry);
+				this.fs.stat(entryPath, (err, stats) => {
+					if (errorOccurred) return;
+					if (err) {
+						errorOccurred = true;
+						if (callback) callback(genError(err, entryPath), null);
+						return;
+					}
+					results[idx] = stats as FSStats;
+					completed++;
+					if (completed === list.length) {
+						if (callback) callback(null, results);
+					}
+				});
+			});
 		});
 	}
 
@@ -482,13 +505,13 @@ export class Shell {
 		 * const entries = await tfs.shell.promises.ls('/documents');
 		 * console.log(entries); // Array of files and directories in /documents
 		 */
-		ls: (path: string): Promise<string[]> => {
+		ls: (path: string): Promise<FSStats[] | [] | null> => {
 			return new Promise((resolve, reject) => {
 				this.ls(path, (err, entries) => {
 					if (err) {
 						reject(err);
 					} else {
-						resolve(entries as string[]);
+						resolve(entries);
 					}
 				});
 			});

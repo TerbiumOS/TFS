@@ -1,7 +1,7 @@
 import { Shell } from "../shell";
-import { genError } from "./errors";
+import { createFSError, genError } from "./errors";
 
-interface FSStats {
+export interface FSStats {
 	name: string;
 	size: number;
 	type: string;
@@ -1154,6 +1154,64 @@ export class FS {
 	}
 
 	/**
+	 * Creates a hard link.
+	 * @param existingPath - The path to the existing file.
+	 * @param newPath - The path where the hard link should be created.
+	 * @param callback - Optional callback function called when the operation completes.
+	 * @example
+	 * tfs.fs.link("/documents/original.txt", "/documents/hardlink.txt", (err) => {
+	 *   if (err) throw err;
+	 *   console.log("Hard link created successfully!");
+	 * });
+	 */
+	link(existingPath: string, newPath: string, callback?: (err: Error | null) => void) {
+		const src = this.normalizePath(existingPath);
+		const dest = this.normalizePath(newPath);
+		if (src === dest) {
+			if (callback) callback(createFSError("EEXIST", dest));
+			return;
+		}
+		this.stat(src, (err, stats) => {
+			if (err || !stats) {
+				if (callback) callback(err);
+				return;
+			}
+			if (stats.type === "DIRECTORY") {
+				if (callback) callback(createFSError("EISDIR", src));
+				return;
+			}
+			this.stat(dest, (destErr, destStats) => {
+				if (!destErr && destStats) {
+					if (callback) callback(createFSError("EEXIST", dest));
+					return;
+				}
+				if (destErr && destErr.name !== "NotFoundError" && (destErr as any).code !== "ENOENT") {
+					if (callback) callback(destErr);
+					return;
+				}
+				this.readFile(src, "arraybuffer", (readErr, data) => {
+					if (readErr) {
+						if (callback) callback(readErr);
+						return;
+					}
+					this.writeFile(dest, data, "arraybuffer", writeErr => {
+						if (writeErr) {
+							if (callback) callback(writeErr);
+							return;
+						}
+						if (this.perms[src]) {
+							const entry = { ...this.perms[src] };
+							updMeta(this.handle, { [dest]: entry });
+							this.perms = { ...this.perms, [dest]: entry };
+						}
+						if (callback) callback(null);
+					});
+				});
+			});
+		});
+	}
+
+	/**
 	 * Copies a file from one path to another.
 	 * @param oldPath - The absolute or relative path of the file to copy.
 	 * @param newPath - The absolute or relative path where the file should be copied to.
@@ -1579,6 +1637,25 @@ export class FS {
 						reject(err);
 					} else {
 						resolve(target!);
+					}
+				});
+			});
+		},
+		/**
+		 * Creates a hard link.
+		 * @param existingPath - The path to the existing file.
+		 * @param newPath - The path where the hard link should be created.
+		 * @returns A promise that resolves when the hard link has been created.
+		 * @example
+		 * await tfs.fs.promises.link("/documents/file.txt", "/documents/file-link.txt");
+		 */
+		link: (existingPath: string, newPath: string) => {
+			return new Promise<void>((resolve, reject) => {
+				this.link(existingPath, newPath, err => {
+					if (err) {
+						reject(err);
+					} else {
+						resolve();
 					}
 				});
 			});
