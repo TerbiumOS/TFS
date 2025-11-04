@@ -1,4 +1,4 @@
-import { FS } from "../fs/index";
+import { FS, type FSStats } from "../fs/index";
 /**
  * The TFS Shell Operations Class
  */
@@ -61,7 +61,7 @@ export declare class Shell {
 	 *   console.log(entries);
 	 * });
 	 */
-	ls(path: string, callback?: (error: Error | null, entries: string[] | null) => void): void;
+	ls(path: string, callback?: (error: Error | null, entries: FSStats[] | [] | null) => void): void;
 	/**
 	 * Executes a JS File using Eval.
 	 * @param path - The path to the JS file to execute.
@@ -207,7 +207,7 @@ export declare class Shell {
 		 * const entries = await tfs.shell.promises.ls('/documents');
 		 * console.log(entries); // Array of files and directories in /documents
 		 */
-		ls: (path: string) => Promise<string[]>;
+		ls: (path: string) => Promise<FSStats[] | [] | null>;
 		/**
 		 * Executes a command in the shell.
 		 * @param path - The path to the command to execute.

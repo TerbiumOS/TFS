@@ -1,5 +1,5 @@
 import { Shell } from "../shell";
-interface FSStats {
+export interface FSStats {
 	name: string;
 	size: number;
 	type: string;
@@ -352,6 +352,18 @@ export declare class FS {
 	 */
 	readlink(path: string, callback?: (err: Error | null, target: string | null) => void): void;
 	/**
+	 * Creates a hard link.
+	 * @param existingPath - The path to the existing file.
+	 * @param newPath - The path where the hard link should be created.
+	 * @param callback - Optional callback function called when the operation completes.
+	 * @example
+	 * tfs.fs.link("/documents/original.txt", "/documents/hardlink.txt", (err) => {
+	 *   if (err) throw err;
+	 *   console.log("Hard link created successfully!");
+	 * });
+	 */
+	link(existingPath: string, newPath: string, callback?: (err: Error | null) => void): void;
+	/**
 	 * Copies a file from one path to another.
 	 * @param oldPath - The absolute or relative path of the file to copy.
 	 * @param newPath - The absolute or relative path where the file should be copied to.
@@ -540,6 +552,15 @@ export declare class FS {
 		 */
 		readlink: (path: string) => Promise<string>;
 		/**
+		 * Creates a hard link.
+		 * @param existingPath - The path to the existing file.
+		 * @param newPath - The path where the hard link should be created.
+		 * @returns A promise that resolves when the hard link has been created.
+		 * @example
+		 * await tfs.fs.promises.link("/documents/file.txt", "/documents/file-link.txt");
+		 */
+		link: (existingPath: string, newPath: string) => Promise<void>;
+		/**
 		 * Copies a file or directory.
 		 * @param oldPath - The absolute or relative path of the file or directory to copy.
 		 * @param newPath - The absolute or relative path where the file or directory should be copied to.
@@ -569,5 +590,4 @@ export declare class FS {
 		chmod: (path: string, mode: number) => Promise<void>;
 	};
 }
-export {};
 //# sourceMappingURL=index.d.ts.map
