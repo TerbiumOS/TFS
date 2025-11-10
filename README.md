@@ -82,6 +82,7 @@ Libraries Used
 
 - [Ferros Buffer Library](https://github.com/feross/buffer) - MIT License
 - [Minimatch](https://github.com/isaacs/minimatch) - ISC License
+- [stack-trace](https://github.com/felixge/node-stack-trace) - MIT License
 
 Made with ❤️ By the Terbium Development Team
 
