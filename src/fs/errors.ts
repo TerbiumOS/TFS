@@ -1,3 +1,5 @@
+import { parse } from "stack-trace";
+
 export enum FSErrors {
 	EACCES = "permission denied",
 	EBADF = "bad file descriptor",
@@ -39,6 +41,20 @@ const errnoMap: Record<string, number> = {
  * @param {string} errMSG The original error message (if Error type is unknown)
  */
 export function createFSError(code: keyof typeof FSErrors, path?: string, errMSG?: string) {
+	const err = new Error();
+	const callsites = parse(err).slice(1);
+	const lines: string[] = [`Error: ${FSErrors[code]}`];
+	for (const cs of callsites) {
+		const fn = (cs as any).getFunctionName?.() || (cs as any).getMethodName?.() || "<anonymous>";
+		const file = (cs as any).getFileName?.();
+		const line = (cs as any).getLineNumber?.();
+		const col = (cs as any).getColumnNumber?.();
+		if (file) {
+			lines.push(`    at ${fn} (${file}:${line}:${col})`);
+		} else {
+			lines.push(`    at ${fn}`);
+		}
+	}
 	if (code === "UNKNOWN" && errMSG) {
 		return {
 			name: "UNKNOWN",
@@ -46,6 +62,7 @@ export function createFSError(code: keyof typeof FSErrors, path?: string, errMSG
 			errno: -1,
 			message: FSErrors[code],
 			path,
+			stack: lines.join("\n"),
 		} as Error;
 	}
 	return {
@@ -54,6 +71,7 @@ export function createFSError(code: keyof typeof FSErrors, path?: string, errMSG
 		errno: errnoMap[code],
 		message: FSErrors[code],
 		path,
+		stack: lines.join("\n"),
 	} as Error;
 }
 
