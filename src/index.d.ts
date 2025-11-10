@@ -6,29 +6,29 @@ import { Shell } from "./shell";
  * The TFS File System Library
  */
 export declare class TFS {
-	handle: FileSystemDirectoryHandle;
-	fs: FS;
-	path: Path;
-	buffer: typeof Buffer;
-	shell: Shell;
-	version: string;
-	/** Polyfill for legacy applications that still expect shell as a uninitialized class */
-	sh?: typeof Shell;
-	constructor(handle: FileSystemDirectoryHandle);
-	/**
-	 * Creates a new instance of TFS
-	 * @returns {Promise<TFS>} Instance of TFS
-	 */
-	static init(): Promise<TFS>;
-	/**
-	 * Initializes TFS for use in a service worker
-	 * @returns {void}
-	 * @example
-	 * // In your service worker file
-	 * importScripts("/tfs/tfs.js");
-	 * tfs.initSw();
-	 * // TFS is now defined on self
-	 */
-	static initSw(): void;
+    handle: FileSystemDirectoryHandle;
+    fs: FS;
+    path: Path;
+    buffer: typeof Buffer;
+    shell: Shell;
+    version: string;
+    /** Polyfill for legacy applications that still expect shell as a uninitialized class */
+    sh?: typeof Shell;
+    constructor(handle: FileSystemDirectoryHandle);
+    /**
+     * Creates a new instance of TFS
+     * @returns {Promise<TFS>} Instance of TFS
+     */
+    static init(): Promise<TFS>;
+    /**
+     * Initializes TFS for use in a service worker
+     * @returns {void}
+     * @example
+     * // In your service worker file
+     * importScripts("/tfs/tfs.js");
+     * tfs.initSw();
+     * // TFS is now defined on self
+     */
+    static initSw(): void;
 }
 //# sourceMappingURL=index.d.ts.map

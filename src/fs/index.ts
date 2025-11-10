@@ -1344,15 +1344,41 @@ export class FS {
 	 * Returns true if any of those permissions are present, similar to NodeFS's fs.access.
 	 * @param path - The path to check permissions for.
 	 * @example
-	 * const canExecute = tfs.fs.getaxxr("/documents/file.txt");
+	 * const canExecute = tfs.fs.getxattr("/documents/file.txt");
 	 * console.log("Can execute/access/read:", canExecute);
 	 */
-	getaxxr(path: string, callback?: (canAccess: boolean) => void) {
+	getxattr(path: string, callback?: (canAccess: boolean) => void) {
 		const normalizedPath = this.normalizePath(path);
 		const perms = this.perms[normalizedPath];
 		if (!perms || !Array.isArray(perms.perms)) return false;
 		const canAccess = perms.perms.includes("x") || perms.perms.includes("a") || perms.perms.includes("r");
 		if (callback) callback(canAccess);
+	}
+
+	/**
+	 * Sets an extended attribute for the given path.
+	 * @param path - The path to set the attribute for.
+	 * @param value - The value of the attribute.
+	 * @param callback - Optional callback function called when the operation completes. Receives an error if one occurs, or null on success.
+	 * @example
+	 * tfs.fs.setxattr("/documents/file.txt", "user.comment", (err) => {
+	 *   if (err) throw err;
+	 *   console.log("Attribute set successfully!");
+	 * });
+	 */
+	setxattr(path: string, value: string, callback?: (err: Error | null) => void) {
+		const normalizedPath = this.normalizePath(path);
+		const perms = this.perms[normalizedPath];
+		if (!perms || !Array.isArray(perms.perms)) {
+			if (callback) callback(genError("NotFoundError", normalizedPath));
+			return;
+		}
+		if (!perms.perms.includes(value)) {
+			perms.perms.push(value);
+			updMeta(this.handle, { [normalizedPath]: perms });
+			this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
+		}
+		if (callback) callback(null);
 	}
 
 	/**
@@ -1540,6 +1566,14 @@ export class FS {
 				});
 			});
 		},
+		/**
+		 * Checks if a file or directory is accessible.
+		 * @param path - The absolute or relative path of the file or directory to check.
+		 * @param mode - The access mode to check (e.g., fs.constants.R_OK, fs.constants.W_OK).
+		 * @returns A promise that resolves with a boolean indicating whether the file or directory is accessible.
+		 * @example
+		 * const canRead = await tfs.fs.promises.access("/documents/file.txt", fs.constants.R_OK);
+		 */
 		access: (path: string, mode: number) => {
 			return new Promise(resolve => {
 				this.access(path, mode, exists => {
@@ -1718,5 +1752,38 @@ export class FS {
 				});
 			});
 		},
+		/**
+		 * Gets an extended attribute for the given path.
+		 * @param path - The path to get the attribute for.
+		 * @returns A promise that resolves with the attribute value, or null if not found.
+		 * @example
+		 * const value = await tfs.fs.promises.getxattr("/documents/file.txt");
+		 */
+		getxattr: (path: string) => {
+			return new Promise<boolean>((resolve) => {
+				this.getxattr(path, (canAccess) => {
+					resolve(canAccess);
+				});
+			});
+		},
+		/**
+		 * Sets an extended attribute for the given path.
+		 * @param path - The path to set the attribute for.
+		 * @param value - The value of the attribute.
+		 * @param callback - Optional callback function called when the operation completes. Receives an error if one occurs, or null on success.
+		 * @example
+		 * await tfs.fs.promises.setxattr("/documents/file.txt", "user.comment");
+		 */
+		setxattr: (path: string, value: string) => {
+			return new Promise<void>((resolve, reject) => {
+				this.setxattr(path, value, (err) => {
+					if (err) {
+						reject(err);
+					} else {
+						resolve();
+					}
+				});
+			});
+		}
 	};
 }
