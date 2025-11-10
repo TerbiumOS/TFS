@@ -1760,8 +1760,8 @@ export class FS {
 		 * const value = await tfs.fs.promises.getxattr("/documents/file.txt");
 		 */
 		getxattr: (path: string) => {
-			return new Promise<boolean>((resolve) => {
-				this.getxattr(path, (canAccess) => {
+			return new Promise<boolean>(resolve => {
+				this.getxattr(path, canAccess => {
 					resolve(canAccess);
 				});
 			});
@@ -1776,7 +1776,7 @@ export class FS {
 		 */
 		setxattr: (path: string, value: string) => {
 			return new Promise<void>((resolve, reject) => {
-				this.setxattr(path, value, (err) => {
+				this.setxattr(path, value, err => {
 					if (err) {
 						reject(err);
 					} else {
@@ -1784,6 +1784,6 @@ export class FS {
 					}
 				});
 			});
-		}
+		},
 	};
 }
