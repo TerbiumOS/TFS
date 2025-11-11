@@ -319,12 +319,21 @@ export class FS {
 	 */
 	readFile(file: string, fTypeorcb: "utf8" | "arraybuffer" | "blob" | "base64" | ((err: Error | null, data: any) => void), callback?: (err: Error | null, data: any) => void) {
 		let type: "utf8" | "arraybuffer" | "blob" | "base64" = "utf8";
-		let cb: (err: Error | null, data: any) => void;
+		// @ts-expect-error type inference
+		const ext = (String(file).split("?")[0].split("#")[0].split(".").pop() || "").toLowerCase();
+		const binaryExts = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "mp3", "wav", "ogg", "flac", "m4a", "aac", "mp4", "m4v", "mov", "avi", "mkv", "webm", "pdf", "zip", "tar", "gz", "tgz", "7z", "rar", "exe", "dll", "class", "bin"]);
 		if (typeof fTypeorcb === "string") {
 			type = fTypeorcb;
+		} else if (binaryExts.has(ext)) {
+			type = "arraybuffer";
+		} else {
+			type = "utf8";
+		}
+		let cb: (err: Error | null, data: any) => void;
+		if (typeof fTypeorcb === "string") {
 			cb = callback!;
 		} else {
-			cb = fTypeorcb;
+			cb = fTypeorcb as (err: Error | null, data: any) => void;
 		}
 		const normalizedPath = this.normalizePath(file);
 		if (normalizedPath in this.perms && this.perms[normalizedPath] && !(this.perms[normalizedPath].perms.includes("r") || this.perms[normalizedPath].perms.includes("a"))) {
@@ -1433,14 +1442,27 @@ export class FS {
 		 */
 		readFile: (file: string, type?: "utf8" | "arraybuffer" | "blob" | "base64") => {
 			return new Promise<any>((resolve, reject) => {
-				if (!type) type = "utf8";
-				this.readFile(file, type, (err: Error | null, data: any) => {
+				let userCb: ((err: Error | null, data: any) => void) | undefined;
+				let encoding: any = type;
+				if (typeof type === "function") {
+					userCb = type as any;
+					encoding = undefined;
+				}
+				const internalCb = (err: Error | null, data: any) => {
+					try {
+						if (userCb) userCb(err, data);
+					} catch (_) {}
 					if (err) {
 						reject(err);
 					} else {
 						resolve(data);
 					}
-				});
+				};
+				if (typeof encoding === "undefined") {
+					this.readFile(file, internalCb as any);
+				} else {
+					this.readFile(file, encoding as any, internalCb);
+				}
 			});
 		},
 		/**
