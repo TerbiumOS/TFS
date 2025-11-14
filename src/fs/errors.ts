@@ -110,3 +110,21 @@ export function genError(err: any, path?: string) {
 		return createFSError("UNKNOWN", path, err && err.message);
 	}
 }
+
+/**
+ * File System Errors as Functions
+ * This is specifically for compatibility with legacy code that expects it such as isomorphic-git
+ */
+export const Errors: Record<string | number, (path?: string, errMSG?: string) => Error> =
+	(Object.keys(FSErrors) as Array<keyof typeof FSErrors>).reduce(
+		(acc, key) => {
+			const fn = (path?: string, errMSG?: string) => createFSError(key, path, errMSG);
+			acc[key] = fn;
+			const num = errnoMap[key];
+			if (typeof num === "number") {
+				acc[num] = fn;
+			}
+			return acc;
+		},
+		{} as Record<string | number, (path?: string, errMSG?: string) => Error>
+	);

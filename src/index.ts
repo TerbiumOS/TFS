@@ -3,6 +3,7 @@ import { FS } from "./fs";
 import { Path } from "./path";
 import { Shell } from "./shell";
 import { version } from "../package.json";
+import { Errors } from "./fs/errors";
 
 /**
  * The TFS File System Library
@@ -16,6 +17,7 @@ export class TFS {
 	version: string = version;
 	/** Polyfill for legacy applications that still expect shell as a uninitialized class */
 	sh?: typeof Shell;
+	Errors: typeof Errors;
 
 	constructor(handle: FileSystemDirectoryHandle) {
 		this.handle = handle;
@@ -23,6 +25,7 @@ export class TFS {
 		this.path = new Path();
 		this.shell = new Shell(this.handle);
 		this.sh = Shell;
+		this.Errors = Errors;
 	}
 
 	/**

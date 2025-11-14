@@ -1,5 +1,5 @@
 import { Shell } from "../shell";
-import { createFSError, genError } from "./errors";
+import { createFSError, Errors, genError } from "./errors";
 
 export interface FSStats {
 	name: string;
@@ -100,6 +100,7 @@ export class FS {
 	shell: Shell;
 	perms: { [key: string]: { perms: string[]; uid: number; gid: number } } = {};
 	constants = FSConstants;
+	errors: typeof Errors = Errors;
 
 	constructor(handle: FileSystemDirectoryHandle) {
 		this.handle = handle;
@@ -317,20 +318,22 @@ export class FS {
 	 *   console.log("File contents:", data);
 	 * });
 	 */
-	readFile(file: string, fTypeorcb: "utf8" | "arraybuffer" | "blob" | "base64" | ((err: Error | null, data: any) => void), callback?: (err: Error | null, data: any) => void) {
+	readFile(file: string, fTypeorcb: "utf8" | "arraybuffer" | "blob" | "base64" | ((err: Error | null, data: any) => void) | { encoding: "utf8" | "arraybuffer" | "blob" | "base64" }, callback?: (err: Error | null, data: any) => void) {
 		let type: "utf8" | "arraybuffer" | "blob" | "base64" = "utf8";
 		// @ts-expect-error type inference
 		const ext = (String(file).split("?")[0].split("#")[0].split(".").pop() || "").toLowerCase();
 		const binaryExts = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "mp3", "wav", "ogg", "flac", "m4a", "aac", "mp4", "m4v", "mov", "avi", "mkv", "webm", "pdf", "zip", "tar", "gz", "tgz", "7z", "rar", "exe", "dll", "class", "bin"]);
 		if (typeof fTypeorcb === "string") {
 			type = fTypeorcb;
+		} else if (typeof fTypeorcb === "object") {
+			type = fTypeorcb.encoding;
 		} else if (binaryExts.has(ext)) {
 			type = "arraybuffer";
 		} else {
 			type = "utf8";
 		}
 		let cb: (err: Error | null, data: any) => void;
-		if (typeof fTypeorcb === "string") {
+		if (typeof fTypeorcb === "string" || typeof fTypeorcb === "object") {
 			cb = callback!;
 		} else {
 			cb = fTypeorcb as (err: Error | null, data: any) => void;
@@ -428,7 +431,9 @@ export class FS {
 	 *   console.log(files);
 	 * });
 	 */
-	readdir(dir: string, callback: (err: Error | null, data: any) => void) {
+	readdir(dir: string, optsorcb: typeof callback | { recursive?: boolean }, callback?: (err: Error | null, data: any) => void) {
+		const cb = typeof optsorcb === "function" ? optsorcb : callback!;
+		const options = typeof optsorcb === "object" ? optsorcb : null;
 		const normalizedPath = this.normalizePath(dir);
 		const parts = normalizedPath.split("/").filter(Boolean);
 		let dirPromise = Promise.resolve(this.handle);
@@ -439,11 +444,36 @@ export class FS {
 			.then(dirHandle => {
 				const entries: string[] = [];
 				const ent = dirHandle.entries();
-				function next() {
+				const next = () => {
 					ent.next()
 						.then(result => {
 							if (result.done) {
-								callback(null, entries);
+								if (options && options.recursive) {
+									(async () => {
+										try {
+											const out: string[] = [];
+											const walk = async (basePath: string, relPrefix = "") => {
+												const names = await this.promises.readdir(basePath).catch(() => []);
+												for (const name of names) {
+													if (name === ".TFS_STORE") continue;
+													const rel = relPrefix ? `${relPrefix}/${name}` : name;
+													out.push(rel);
+													const full = this.normalizePath(basePath + "/" + name);
+													const st = await this.promises.stat(full).catch(() => null);
+													if (st && st.type === "DIRECTORY") {
+														await walk(full, rel);
+													}
+												}
+											};
+											await walk(this.normalizePath(dir));
+											cb(null, out);
+										} catch (err) {
+											cb(genError(err, dir), null);
+										}
+									})();
+									return;
+								}
+								cb(null, entries);
 							} else {
 								const [name] = result.value;
 								if (name !== ".TFS_STORE") entries.push(name);
@@ -451,13 +481,13 @@ export class FS {
 							}
 						})
 						.catch(err => {
-							callback(genError(err, dir), null);
+							cb(genError(err, dir), null);
 						});
 				}
 				next();
 			})
 			.catch(err => {
-				callback(genError(err, dir), null);
+				cb(genError(err, dir), null);
 			});
 	}
 
@@ -974,8 +1004,9 @@ export class FS {
 	 *   console.log("Directory deleted successfully!");
 	 * });
 	 */
-	rmdir(path: string, callback?: (err: Error | null) => void) {
+	rmdir(path: string, optsorcb?: typeof callback | { recursive?: boolean }, callback?: (err: Error | null) => void) {
 		const normalizedPath = this.normalizePath(path);
+		const cb = typeof optsorcb === "function" ? optsorcb : callback!;
 		const parts = normalizedPath.split("/").filter(Boolean);
 		let dirPromise: Promise<FileSystemDirectoryHandle> = Promise.resolve(this.handle);
 		for (let i = 0; i < parts.length - 1; i++) {
@@ -983,7 +1014,7 @@ export class FS {
 		}
 		const dirName = parts[parts.length - 1];
 		if (normalizedPath in this.perms && this.perms[normalizedPath] && !(this.perms[normalizedPath].perms.includes("w") || this.perms[normalizedPath].perms.includes("a"))) {
-			if (callback) callback(genError("SecurityError", normalizedPath));
+			if (cb) cb(genError("SecurityError", normalizedPath));
 			return;
 		}
 		updMeta(this.handle, { [normalizedPath]: true });
@@ -992,10 +1023,10 @@ export class FS {
 				return dirHandle.removeEntry(dirName as string);
 			})
 			.then(() => {
-				if (callback) callback(null);
+				if (cb) cb(null);
 			})
 			.catch(err => {
-				if (callback) callback(genError(err, path));
+				if (cb) cb(genError(err, path));
 			});
 	}
 
@@ -1440,7 +1471,7 @@ export class FS {
 		 * @example
 		 * const data = await tfs.fs.promises.readFile("/documents/file.txt", "utf8");
 		 */
-		readFile: (file: string, type?: "utf8" | "arraybuffer" | "blob" | "base64") => {
+		readFile: (file: string, type?: "utf8" | "arraybuffer" | "blob" | "base64" | { encoding: string }) => {
 			return new Promise<any>((resolve, reject) => {
 				let userCb: ((err: Error | null, data: any) => void) | undefined;
 				let encoding: any = type;
@@ -1490,9 +1521,9 @@ export class FS {
 		 * @example
 		 * const contents = await tfs.fs.promises.readdir("/documents");
 		 */
-		readdir: (dir: string) => {
+		readdir: (dir: string, options?: { recursive?: boolean }) => {
 			return new Promise<string[]>((resolve, reject) => {
-				this.readdir(dir, (err, files) => {
+				this.readdir(dir, options, (err, files) => {
 					if (err) {
 						reject(err);
 					} else {
@@ -1610,9 +1641,9 @@ export class FS {
 		 * @example
 		 * await tfs.fs.promises.rmdir("/documents/oldFolder");
 		 */
-		rmdir: (path: string) => {
+		rmdir: (path: string, options?: { recursive?: boolean }) => {
 			return new Promise<void>((resolve, reject) => {
-				this.rmdir(path, err => {
+				this.rmdir(path, options, err => {
 					if (err) {
 						reject(err);
 					} else {
