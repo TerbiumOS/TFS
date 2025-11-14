@@ -483,7 +483,7 @@ export class FS {
 						.catch(err => {
 							cb(genError(err, dir), null);
 						});
-				}
+				};
 				next();
 			})
 			.catch(err => {
