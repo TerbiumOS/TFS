@@ -1,4 +1,5 @@
 import { Shell } from "../shell";
+import { Errors } from "./errors";
 export interface FSStats {
 	name: string;
 	size: number;
@@ -133,6 +134,7 @@ export declare class FS {
 		UV_FS_COPYFILE_EXCL: number;
 		COPYFILE_EXCL: number;
 	};
+	errors: typeof Errors;
 	constructor(handle: FileSystemDirectoryHandle);
 	/**
 	 * Normalizes the given path, resolving relative segments like "." and "..".
@@ -182,7 +184,19 @@ export declare class FS {
 	 *   console.log("File contents:", data);
 	 * });
 	 */
-	readFile(file: string, fTypeorcb: "utf8" | "arraybuffer" | "blob" | "base64" | ((err: Error | null, data: any) => void), callback?: (err: Error | null, data: any) => void): void;
+	readFile(
+		file: string,
+		fTypeorcb:
+			| "utf8"
+			| "arraybuffer"
+			| "blob"
+			| "base64"
+			| ((err: Error | null, data: any) => void)
+			| {
+					encoding: "utf8" | "arraybuffer" | "blob" | "base64";
+			  },
+		callback?: (err: Error | null, data: any) => void,
+	): void;
 	/**
 	 * Creates a directory at the specified path
 	 * @param dir - The absolute or relative path of the directory to create.
@@ -205,7 +219,15 @@ export declare class FS {
 	 *   console.log(files);
 	 * });
 	 */
-	readdir(dir: string, callback: (err: Error | null, data: any) => void): void;
+	readdir(
+		dir: string,
+		optsorcb:
+			| typeof callback
+			| {
+					recursive?: boolean;
+			  },
+		callback?: (err: Error | null, data: any) => void,
+	): void;
 	/**
 	 * Retrieves information about a file or directory.
 	 * @param path - The absolute or relative path of the file or directory to retrieve information for.
@@ -292,7 +314,15 @@ export declare class FS {
 	 *   console.log("Directory deleted successfully!");
 	 * });
 	 */
-	rmdir(path: string, callback?: (err: Error | null) => void): void;
+	rmdir(
+		path: string,
+		optsorcb?:
+			| typeof callback
+			| {
+					recursive?: boolean;
+			  },
+		callback?: (err: Error | null) => void,
+	): void;
 	/**
 	 * Renames a file or directory.
 	 * @param oldPath - The absolute or relative path of the file or directory to rename.
@@ -460,7 +490,17 @@ export declare class FS {
 		 * @example
 		 * const data = await tfs.fs.promises.readFile("/documents/file.txt", "utf8");
 		 */
-		readFile: (file: string, type?: "utf8" | "arraybuffer" | "blob" | "base64") => Promise<any>;
+		readFile: (
+			file: string,
+			type?:
+				| "utf8"
+				| "arraybuffer"
+				| "blob"
+				| "base64"
+				| {
+						encoding: string;
+				  },
+		) => Promise<any>;
 		/**
 		 * Creates a new directory.
 		 * @param dir - The path to the directory to create.
@@ -476,7 +516,12 @@ export declare class FS {
 		 * @example
 		 * const contents = await tfs.fs.promises.readdir("/documents");
 		 */
-		readdir: (dir: string) => Promise<string[]>;
+		readdir: (
+			dir: string,
+			options?: {
+				recursive?: boolean;
+			},
+		) => Promise<string[]>;
 		/**
 		 * Retrieves information about a file or directory.
 		 * @param path - The absolute or relative path of the file or directory to retrieve information for.
@@ -534,7 +579,12 @@ export declare class FS {
 		 * @example
 		 * await tfs.fs.promises.rmdir("/documents/oldFolder");
 		 */
-		rmdir: (path: string) => Promise<void>;
+		rmdir: (
+			path: string,
+			options?: {
+				recursive?: boolean;
+			},
+		) => Promise<void>;
 		/**
 		 * Renames a file or directory.
 		 * @param oldPath - The absolute or relative path of the file or directory to rename.

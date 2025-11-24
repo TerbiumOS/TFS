@@ -2,6 +2,7 @@ import { Buffer } from "buffer";
 import { FS } from "./fs";
 import { Path } from "./path";
 import { Shell } from "./shell";
+import { Errors } from "./fs/errors";
 /**
  * The TFS File System Library
  */
@@ -14,6 +15,7 @@ export declare class TFS {
 	version: string;
 	/** Polyfill for legacy applications that still expect shell as a uninitialized class */
 	sh?: typeof Shell;
+	Errors: typeof Errors;
 	constructor(handle: FileSystemDirectoryHandle);
 	/**
 	 * Creates a new instance of TFS

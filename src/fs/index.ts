@@ -200,7 +200,7 @@ export class FS {
 			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(parts[i] as string, { create: true }));
 		}
 		if (normalizedPath in this.perms && this.perms[normalizedPath] && !(this.perms[normalizedPath].perms.includes("w") || this.perms[normalizedPath].perms.includes("a"))) {
-			if (cb) cb(genError("SecurityError", normalizedPath));
+			if (cb && typeof cb === "function") cb(genError("SecurityError", normalizedPath));
 			return;
 		}
 		const fileName = parts[parts.length - 1];
@@ -294,10 +294,10 @@ export class FS {
 				await writable.close();
 			})
 			.then(() => {
-				if (cb) cb(null);
+				if (cb && typeof cb === "function") cb(null);
 			})
 			.catch(err => {
-				if (cb) cb(genError(err, normalizedPath));
+				if (cb && typeof cb === "function") cb(genError(err, normalizedPath));
 			});
 	}
 
@@ -340,7 +340,7 @@ export class FS {
 		}
 		const normalizedPath = this.normalizePath(file);
 		if (normalizedPath in this.perms && this.perms[normalizedPath] && !(this.perms[normalizedPath].perms.includes("r") || this.perms[normalizedPath].perms.includes("a"))) {
-			if (cb) cb(genError("SecurityError", normalizedPath), null);
+			if (cb && typeof cb === "function") cb(genError("SecurityError", normalizedPath), null);
 			return;
 		}
 		const parts = normalizedPath.split("/").filter(Boolean);
@@ -362,32 +362,32 @@ export class FS {
 							if (linkType === "file") {
 								this.readFile(target as string, type, cb);
 							} else {
-								if (cb) cb(genError(new Error("TypeMismatchError"), file.name), null);
+								if (cb && typeof cb === "function") cb(genError(new Error("TypeMismatchError"), file.name), null);
 							}
 							return;
 						}
 						if (type === "arraybuffer") {
 							file.arrayBuffer().then(data => {
-								if (cb) cb(null, data);
+								if (cb && typeof cb === "function") cb(null, data);
 							});
 						} else if (type === "blob") {
-							if (cb) cb(null, file);
+							if (cb && typeof cb === "function") cb(null, file);
 						} else if (type === "base64") {
 							const reader = new FileReader();
 							reader.onload = () => {
-								if (cb) cb(null, reader.result);
+								if (cb && typeof cb === "function") cb(null, reader.result);
 							};
 							reader.readAsDataURL(file);
 						} else {
-							if (cb) cb(null, text);
+							if (cb && typeof cb === "function") cb(null, text);
 						}
 					})
 					.catch(err => {
-						if (cb) cb(genError(err, file.name), null);
+						if (cb && typeof cb === "function") cb(genError(err, file.name), null);
 					});
 			})
 			.catch(err => {
-				if (cb) cb(genError(err, file), null);
+				if (cb && typeof cb === "function") cb(genError(err, file), null);
 			});
 	}
 
@@ -1014,7 +1014,7 @@ export class FS {
 		}
 		const dirName = parts[parts.length - 1];
 		if (normalizedPath in this.perms && this.perms[normalizedPath] && !(this.perms[normalizedPath].perms.includes("w") || this.perms[normalizedPath].perms.includes("a"))) {
-			if (cb) cb(genError("SecurityError", normalizedPath));
+			if (cb && typeof cb === "function") cb(genError("SecurityError", normalizedPath));
 			return;
 		}
 		updMeta(this.handle, { [normalizedPath]: true });
@@ -1023,10 +1023,10 @@ export class FS {
 				return dirHandle.removeEntry(dirName as string);
 			})
 			.then(() => {
-				if (cb) cb(null);
+				if (cb && typeof cb === "function") cb(null);
 			})
 			.catch(err => {
-				if (cb) cb(genError(err, path));
+				if (cb && typeof cb === "function") cb(genError(err, path));
 			});
 	}
 

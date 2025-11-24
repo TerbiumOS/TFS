@@ -27,4 +27,9 @@ export declare function createFSError(code: keyof typeof FSErrors, path?: string
  * @param {string} path The path of the requested File Operation
  */
 export declare function genError(err: any, path?: string): Error;
+/**
+ * File System Errors as Functions
+ * This is specifically for compatibility with legacy code that expects it such as isomorphic-git
+ */
+export declare const Errors: Record<string | number, (path?: string, errMSG?: string) => Error>;
 //# sourceMappingURL=errors.d.ts.map
