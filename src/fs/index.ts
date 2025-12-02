@@ -1050,19 +1050,56 @@ export class FS {
 				if (callback) callback(genError(err, oldP));
 				return;
 			}
+			const moveMetaSingle = async (from: string, to: string) => {
+				if (!this.perms[from]) return Promise.resolve();
+				const entry = { ...this.perms[from] };
+				await updMeta(this.handle, { [to]: entry, [from]: true });
+				delete this.perms[from];
+				this.perms[to] = entry;
+			};
 			if (stats.type === "DIRECTORY") {
 				this.cp(oldP, newP, cpErr => {
 					if (cpErr) {
 						if (callback) callback(genError(cpErr, newP));
 						return;
 					}
+					const updates: { [key: string]: any } = {};
+					const dels: { [key: string]: boolean } = {};
+					for (const key of Object.keys(this.perms)) {
+						if (key === oldP || key.startsWith(oldP + "/")) {
+							const newKey = key === oldP ? newP : newP + key.slice(oldP.length);
+							updates[newKey] = { ...this.perms[key] };
+							dels[key] = true;
+						}
+					}
+					const metaPayload: { [key: string]: any } = { ...updates };
+					for (const k of Object.keys(dels)) metaPayload[k] = true;
+					const afterRm = () => {
+						if (Object.keys(metaPayload).length === 0) {
+							if (callback) callback(null);
+							return;
+						}
+						updMeta(this.handle, metaPayload)
+							.then(() => {
+								for (const k of Object.keys(dels)) delete this.perms[k];
+								for (const k of Object.keys(updates)) this.perms[k] = updates[k];
+								if (callback) callback(null);
+							})
+							.catch(rmErr => {
+								if (callback) callback(genError(rmErr, oldP));
+							});
+					};
 					this.shell.promises
 						.rm(oldP, { recursive: true })
 						.then(() => {
-							if (callback) callback(null);
+							afterRm();
 						})
 						.catch(rmErr => {
-							if (callback) callback(genError(rmErr, oldP));
+							if (rmErr && (rmErr.code === "ENOENT" || rmErr.name === "NotFoundError")) {
+								afterRm();
+							} else {
+								if (callback) callback(genError(rmErr, oldP));
+							}
 						});
 				});
 			} else {
@@ -1071,13 +1108,29 @@ export class FS {
 						if (callback) callback(genError(copyErr, oldP));
 						return;
 					}
-					this.unlink(oldP, unlinkErr => {
-						if (unlinkErr) {
-							if (callback) callback(genError(unlinkErr, oldP));
-						} else {
-							if (callback) callback(null);
-						}
-					});
+					if (this.perms[oldP]) {
+						moveMetaSingle(oldP, newP)
+							.then(() => {
+								this.unlink(oldP, unlinkErr => {
+									if (unlinkErr) {
+										if (callback) callback(genError(unlinkErr, oldP));
+									} else {
+										if (callback) callback(null);
+									}
+								});
+							})
+							.catch(metaErr => {
+								if (callback) callback(genError(metaErr, oldP));
+							});
+					} else {
+						this.unlink(oldP, unlinkErr => {
+							if (unlinkErr) {
+								if (callback) callback(genError(unlinkErr, oldP));
+							} else {
+								if (callback) callback(null);
+							}
+						});
+					}
 				});
 			}
 		});
