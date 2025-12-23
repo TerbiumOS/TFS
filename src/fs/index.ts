@@ -884,6 +884,7 @@ export class FS {
 		const normalizedPath = this.normalizePath(path);
 		let closed = false;
 		let prevSnapshot: Map<string, { size: number; lastModified: number; type: string }> = new Map();
+		let initialized = false;
 		const EventEmitter = class {
 			private listeners: { [event in "rename" | "change"]?: Array<(event: "rename" | "change", filename: string) => void> } = {};
 			on(event: "rename" | "change", cb: (event: "rename" | "change", filename: string) => void) {
@@ -927,6 +928,11 @@ export class FS {
 					await walk(normalizedPath);
 				}
 			}
+			if (!initialized) {
+				prevSnapshot = snapshot;
+				initialized = true;
+				return;
+			}
 			for (const [file, info] of snapshot) {
 				if (!prevSnapshot.has(file)) {
 					emitter.emit("rename", file);
@@ -939,7 +945,10 @@ export class FS {
 			}
 			for (const file of prevSnapshot.keys()) {
 				if (!snapshot.has(file)) {
-					emitter.emit("rename", file);
+					const stillExists = await this.promises.exists(file).catch(() => false);
+					if (!stillExists) {
+						emitter.emit("rename", file);
+					}
 				}
 			}
 			prevSnapshot = snapshot;
