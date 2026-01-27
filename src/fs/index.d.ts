@@ -135,6 +135,8 @@ export declare class FS {
 		COPYFILE_EXCL: number;
 	};
 	errors: typeof Errors;
+	private fdCounter;
+	private openFiles;
 	constructor(handle: FileSystemDirectoryHandle);
 	/**
 	 * Normalizes the given path, resolving relative segments like "." and "..".
@@ -463,6 +465,81 @@ export declare class FS {
 	 * });
 	 */
 	setxattr(path: string, value: string, callback?: (err: Error | null) => void): void;
+	/**
+	 * Opens a file and returns a file descriptor.
+	 * @param path - The absolute or relative path to the file to open.
+	 * @param flags - File system flags (e.g., 'r', 'w', 'a', 'r+', 'w+', 'a+').
+	 * @param mode - Optional file mode (permissions). Defaults to 0o666.
+	 * @param callback - Callback function called with the result. Receives an error (or null) and the file descriptor.
+	 * @example
+	 * tfs.fs.open("/documents/file.txt", "r", (err, fd) => {
+	 *   if (err) throw err;
+	 *   console.log("File opened with fd:", fd);
+	 *   // Remember to close the file descriptor when done
+	 *   tfs.fs.close(fd, (err) => {
+	 *     if (err) throw err;
+	 *   });
+	 * });
+	 */
+	open(path: string, flags: string | number, mode?: number | ((err: Error | null, fd?: number) => void), callback?: (err: Error | null, fd?: number) => void): void;
+	/**
+	 * Closes a file descriptor.
+	 * @param fd - The file descriptor to close.
+	 * @param callback - Optional callback function called when the operation completes. Receives an error if one occurs, or null on success.
+	 * @example
+	 * tfs.fs.close(fd, (err) => {
+	 *   if (err) throw err;
+	 *   console.log("File closed successfully!");
+	 * });
+	 */
+	close(fd: number, callback?: (err: Error | null) => void): void;
+	/**
+	 * Writes data to a file descriptor.
+	 * @param fd - The file descriptor to write to.
+	 * @param buffer - The data to write. Can be a string, Buffer, TypedArray, or DataView.
+	 * @param offset - The offset in the buffer where to start reading data. If buffer is a string, this is the position in the file.
+	 * @param length - The number of bytes to write. If buffer is a string, this is the encoding.
+	 * @param position - The position in the file where to write data. If null, data is written at the current position. If buffer is a string, this parameter is the callback.
+	 * @param callback - Callback function called with the result. Receives an error (or null), bytes written, and the buffer/string written.
+	 * @example
+	 * const buffer = new TextEncoder().encode("Hello, World!");
+	 * tfs.fs.write(fd, buffer, 0, buffer.length, null, (err, bytesWritten, buffer) => {
+	 *   if (err) throw err;
+	 *   console.log(`Wrote ${bytesWritten} bytes`);
+	 * });
+	 *
+	 * // String variant
+	 * tfs.fs.write(fd, "Hello, World!", null, "utf8", (err, bytesWritten, str) => {
+	 *   if (err) throw err;
+	 *   console.log(`Wrote ${bytesWritten} bytes`);
+	 * });
+	 */
+	write(
+		fd: number,
+		buffer: string | ArrayBufferView | ArrayBuffer,
+		offset?: number | null | ((err: Error | null, bytesWritten?: number, buffer?: any) => void),
+		length?: number | string | null | ((err: Error | null, bytesWritten?: number, buffer?: any) => void),
+		position?: number | string | null | ((err: Error | null, bytesWritten?: number, buffer?: any) => void),
+		callback?: (err: Error | null, bytesWritten?: number, buffer?: any) => void,
+	): void;
+	/**
+	 * Reads data from a file descriptor.
+	 * @param fd - The file descriptor to read from.
+	 * @param buffer - The buffer to write the data to.
+	 * @param offset - The offset in the buffer where to start writing.
+	 * @param length - The number of bytes to read.
+	 * @param position - The position in the file where to start reading. If null, reads from the current position.
+	 * @param callback - Callback function called with the result. Receives an error (or null), bytes read, and the buffer.
+	 * @example
+	 * const buffer = new Uint8Array(1024);
+	 * tfs.fs.read(fd, buffer, 0, buffer.length, null, (err, bytesRead, buffer) => {
+	 *   if (err) throw err;
+	 *   console.log(`Read ${bytesRead} bytes`);
+	 *   const text = new TextDecoder().decode(buffer.subarray(0, bytesRead));
+	 *   console.log(text);
+	 * });
+	 */
+	read(fd: number, buffer: ArrayBufferView, offset: number, length: number, position: number | null, callback: (err: Error | null, bytesRead?: number, buffer?: ArrayBufferView) => void): void;
 	/**
 	 * Sets execute (x), access (a), or read (r) permission for the given path, similar to NodeFS's chmod.
 	 * Adds "x" permission if not present.
