@@ -101,6 +101,8 @@ export class FS {
 	perms: { [key: string]: { perms: string[]; uid: number; gid: number } } = {};
 	constants = FSConstants;
 	errors: typeof Errors = Errors;
+	private fdCounter = 0;
+	private openFiles: Map<number, { handle: FileSystemFileHandle; path: string; flags: string }> = new Map();
 
 	constructor(handle: FileSystemDirectoryHandle) {
 		this.handle = handle;
@@ -1481,6 +1483,219 @@ export class FS {
 			this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
 		}
 		if (callback) callback(null);
+	}
+
+	/**
+	 * Opens a file and returns a file descriptor.
+	 * @param path - The absolute or relative path to the file to open.
+	 * @param flags - File system flags (e.g., 'r', 'w', 'a', 'r+', 'w+', 'a+').
+	 * @param mode - Optional file mode (permissions). Defaults to 0o666.
+	 * @param callback - Callback function called with the result. Receives an error (or null) and the file descriptor.
+	 * @example
+	 * tfs.fs.open("/documents/file.txt", "r", (err, fd) => {
+	 *   if (err) throw err;
+	 *   console.log("File opened with fd:", fd);
+	 *   // Remember to close the file descriptor when done
+	 *   tfs.fs.close(fd, (err) => {
+	 *     if (err) throw err;
+	 *   });
+	 * });
+	 */
+	open(path: string, flags: string | number, mode?: number | ((err: Error | null, fd?: number) => void), callback?: (err: Error | null, fd?: number) => void) {
+		if (typeof mode === "function") {
+			callback = mode;
+			mode = 0o666;
+		}
+		const normalizedPath = this.normalizePath(path);
+		const flagsStr = typeof flags === "number" ? flags.toString() : flags;
+		(async () => {
+			try {
+				const pathParts = normalizedPath.split("/").filter(Boolean);
+				let currentHandle: FileSystemDirectoryHandle | FileSystemFileHandle = this.handle;
+				for (let i = 0; i < pathParts.length - 1; i++) {
+					const part = pathParts[i];
+					if (part === "..") {
+						throw createFSError("ENOENT", normalizedPath);
+					}
+					currentHandle = await (currentHandle as FileSystemDirectoryHandle).getDirectoryHandle(part as string, { create: false });
+				}
+				const fileName = pathParts[pathParts.length - 1];
+				let fileHandle: FileSystemFileHandle;
+				const shouldCreate = flagsStr.includes("w") || flagsStr.includes("a") || flagsStr === "wx" || flagsStr === "ax";
+				const shouldExist = flagsStr === "r" || flagsStr === "r+";
+				if (shouldExist) {
+					fileHandle = await (currentHandle as FileSystemDirectoryHandle).getFileHandle(fileName as string, { create: false });
+				} else if (shouldCreate) {
+					fileHandle = await (currentHandle as FileSystemDirectoryHandle).getFileHandle(fileName as string, { create: true });
+				} else {
+					fileHandle = await (currentHandle as FileSystemDirectoryHandle).getFileHandle(fileName as string, { create: false });
+				}
+				const fd = ++this.fdCounter;
+				this.openFiles.set(fd, { handle: fileHandle, path: normalizedPath, flags: flagsStr });
+				if (callback) callback(null, fd);
+			} catch (error: any) {
+				if (error.name === "NotFoundError") {
+					if (callback) callback(createFSError("ENOENT", normalizedPath));
+				} else {
+					if (callback) callback(error);
+				}
+			}
+		})();
+	}
+
+	/**
+	 * Closes a file descriptor.
+	 * @param fd - The file descriptor to close.
+	 * @param callback - Optional callback function called when the operation completes. Receives an error if one occurs, or null on success.
+	 * @example
+	 * tfs.fs.close(fd, (err) => {
+	 *   if (err) throw err;
+	 *   console.log("File closed successfully!");
+	 * });
+	 */
+	close(fd: number, callback?: (err: Error | null) => void) {
+		if (!this.openFiles.has(fd)) {
+			if (callback) callback(createFSError("EBADF", fd.toString()));
+			return;
+		}
+		this.openFiles.delete(fd);
+		if (callback) callback(null);
+	}
+
+	/**
+	 * Writes data to a file descriptor.
+	 * @param fd - The file descriptor to write to.
+	 * @param buffer - The data to write. Can be a string, Buffer, TypedArray, or DataView.
+	 * @param offset - The offset in the buffer where to start reading data. If buffer is a string, this is the position in the file.
+	 * @param length - The number of bytes to write. If buffer is a string, this is the encoding.
+	 * @param position - The position in the file where to write data. If null, data is written at the current position. If buffer is a string, this parameter is the callback.
+	 * @param callback - Callback function called with the result. Receives an error (or null), bytes written, and the buffer/string written.
+	 * @example
+	 * const buffer = new TextEncoder().encode("Hello, World!");
+	 * tfs.fs.write(fd, buffer, 0, buffer.length, null, (err, bytesWritten, buffer) => {
+	 *   if (err) throw err;
+	 *   console.log(`Wrote ${bytesWritten} bytes`);
+	 * });
+	 *
+	 * // String variant
+	 * tfs.fs.write(fd, "Hello, World!", null, "utf8", (err, bytesWritten, str) => {
+	 *   if (err) throw err;
+	 *   console.log(`Wrote ${bytesWritten} bytes`);
+	 * });
+	 */
+	write(
+		fd: number,
+		buffer: string | ArrayBufferView | ArrayBuffer,
+		offset?: number | null | ((err: Error | null, bytesWritten?: number, buffer?: any) => void),
+		length?: number | string | null | ((err: Error | null, bytesWritten?: number, buffer?: any) => void),
+		position?: number | string | null | ((err: Error | null, bytesWritten?: number, buffer?: any) => void),
+		callback?: (err: Error | null, bytesWritten?: number, buffer?: any) => void,
+	) {
+		if (typeof buffer === "string") {
+			const str = buffer;
+			const pos = typeof offset === "number" ? offset : null;
+			const encoding = typeof length === "string" ? length : "utf8";
+			const cb = typeof position === "function" ? position : callback;
+			(async () => {
+				try {
+					const fileInfo = this.openFiles.get(fd);
+					if (!fileInfo) {
+						if (cb) cb(createFSError("EBADF", fd.toString()));
+						return;
+					}
+					const file = await fileInfo.handle.getFile();
+					const writable = await fileInfo.handle.createWritable({ keepExistingData: true });
+					if (pos !== null) {
+						await writable.seek(pos);
+					}
+					const encoder = new TextEncoder();
+					const data = encoder.encode(str);
+					await writable.write(data);
+					await writable.close();
+					if (cb) cb(null, data.length, str);
+				} catch (error: any) {
+					if (cb) cb(error);
+				}
+			})();
+			return;
+		}
+		const off = typeof offset === "number" ? offset : 0;
+		const len = typeof length === "number" ? length : undefined;
+		const pos = typeof position === "number" ? position : null;
+		const cb = typeof position === "function" ? position : callback;
+		(async () => {
+			try {
+				const fileInfo = this.openFiles.get(fd);
+				if (!fileInfo) {
+					if (cb) cb(createFSError("EBADF", fd.toString()));
+					return;
+				}
+				let data: Uint8Array;
+				if (buffer instanceof ArrayBuffer) {
+					data = new Uint8Array(buffer, off, len);
+				} else if (ArrayBuffer.isView(buffer)) {
+					const uint8Array = new Uint8Array(buffer.buffer, buffer.byteOffset + off, len !== undefined ? len : buffer.byteLength - off);
+					data = uint8Array;
+				} else {
+					if (cb) cb(createFSError("EINVAL", fd.toString()));
+					return;
+				}
+				const writable = await fileInfo.handle.createWritable({ keepExistingData: true });
+				if (pos !== null) {
+					await writable.seek(pos);
+				}
+				// @ts-expect-error
+				await writable.write(data);
+				await writable.close();
+				if (cb) cb(null, data.length, buffer);
+			} catch (error: any) {
+				if (cb) cb(error);
+			}
+		})();
+	}
+
+	/**
+	 * Reads data from a file descriptor.
+	 * @param fd - The file descriptor to read from.
+	 * @param buffer - The buffer to write the data to.
+	 * @param offset - The offset in the buffer where to start writing.
+	 * @param length - The number of bytes to read.
+	 * @param position - The position in the file where to start reading. If null, reads from the current position.
+	 * @param callback - Callback function called with the result. Receives an error (or null), bytes read, and the buffer.
+	 * @example
+	 * const buffer = new Uint8Array(1024);
+	 * tfs.fs.read(fd, buffer, 0, buffer.length, null, (err, bytesRead, buffer) => {
+	 *   if (err) throw err;
+	 *   console.log(`Read ${bytesRead} bytes`);
+	 *   const text = new TextDecoder().decode(buffer.subarray(0, bytesRead));
+	 *   console.log(text);
+	 * });
+	 */
+	read(fd: number, buffer: ArrayBufferView, offset: number, length: number, position: number | null, callback: (err: Error | null, bytesRead?: number, buffer?: ArrayBufferView) => void) {
+		(async () => {
+			try {
+				const fileInfo = this.openFiles.get(fd);
+				if (!fileInfo) {
+					if (callback) callback(createFSError("EBADF", fd.toString()));
+					return;
+				}
+				const file = await fileInfo.handle.getFile();
+				const fileBuffer = await file.arrayBuffer();
+				const startPos = position !== null ? position : 0;
+				const endPos = Math.min(startPos + length, fileBuffer.byteLength);
+				const bytesToRead = endPos - startPos;
+				if (bytesToRead <= 0) {
+					if (callback) callback(null, 0, buffer);
+					return;
+				}
+				const sourceData = new Uint8Array(fileBuffer, startPos, bytesToRead);
+				const targetData = new Uint8Array(buffer.buffer, buffer.byteOffset + offset, length);
+				targetData.set(sourceData.subarray(0, Math.min(bytesToRead, length)));
+				if (callback) callback(null, bytesToRead, buffer);
+			} catch (error: any) {
+				if (callback) callback(error);
+			}
+		})();
 	}
 
 	/**

@@ -29,8 +29,8 @@ Current chart of Filer methods supported by TFS
 | fs.access | Yes | Yes | Yes |
 | fs.mkdtemp | Yes | Yes | Yes |
 | fs.readdir | Yes | Yes | Yes |
-| fs.close | No | No | No |
-| fs.open | No | No | No |
+| fs.close | Yes | Yes | No |
+| fs.open | Yes | Yes | No |
 | fs.utimes | No | No | No |
 | fs.futimes | No | No | No |
 | fs.chown | Yes | Yes | Yes |
@@ -38,8 +38,8 @@ Current chart of Filer methods supported by TFS
 | fs.chmod | Yes | Yes | Yes |
 | fs.fchmod | No | No | No |
 | fs.fsync | No | No | No |
-| fs.write | No | No | No |
-| fs.read | No | No | No |
+| fs.write | Yes | Yes | No |
+| fs.read | Yes | Yes | No |
 | fs.readFile | Yes | Yes | Yes |
 | fs.writeFile | Yes | Yes | Yes |
 | fs.appendFile | Yes | Yes | Yes |
@@ -54,6 +54,6 @@ Current chart of Filer methods supported by TFS
 
 Progress based on the "Implemented" column:
 
-`[███████████░░░░░░░░] 51.3%`
+`[██████████████░░░░] 62.2%`
 
-Implemented: 19 of 37 — 51.3% complete.
+Implemented: 23 of 37 — 62.2% complete.
