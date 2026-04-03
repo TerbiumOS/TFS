@@ -51,15 +51,15 @@
 	"license": "Apache-2.0",
 	"packageManager": "pnpm@10.18.3",
 	"devDependencies": {
-		"@biomejs/biome": "^2.3.11",
-		"@rspack/cli": "^1.7.3",
-		"@rspack/core": "^1.7.3",
+		"@biomejs/biome": "^2.4.10",
+		"@rspack/cli": "^1.7.11",
+		"@rspack/core": "^1.7.11",
 		"@types/stack-trace": "^0.0.33",
-		"typescript": "^5.9.3"
+		"typescript": "^6.0.2"
 	},
 	"dependencies": {
 		"buffer": "^6.0.3",
-		"minimatch": "^10.1.1",
+		"minimatch": "^10.2.5",
 		"stack-trace": "1.0.0-pre2"
 	}
 }
