@@ -1,7 +1,7 @@
 {
 	"name": "@terbiumos/tfs",
 	"displayName": "TFS",
-	"version": "1.0.23",
+	"version": "1.0.24",
 	"description": "The drop in Filer replacement you have been waiting for. Completely Typed and Built with TypeScript",
 	"type": "module",
 	"types": "/src/index.d.ts",
@@ -51,11 +51,11 @@
 	"license": "Apache-2.0",
 	"packageManager": "pnpm@10.18.3",
 	"devDependencies": {
-		"@biomejs/biome": "^2.4.10",
+		"@biomejs/biome": "^2.4.13",
 		"@rspack/cli": "^1.7.11",
 		"@rspack/core": "^1.7.11",
 		"@types/stack-trace": "^0.0.33",
-		"typescript": "^6.0.2"
+		"typescript": "^6.0.3"
 	},
 	"dependencies": {
 		"buffer": "^6.0.3",
