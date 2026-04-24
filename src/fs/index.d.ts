@@ -137,7 +137,9 @@ export declare class FS {
 	errors: typeof Errors;
 	private fdCounter;
 	private openFiles;
+	private readonly packIdx;
 	constructor(handle: FileSystemDirectoryHandle);
+	private validatePackIndexEntries;
 	/**
 	 * Normalizes the given path, resolving relative segments like "." and "..".
 	 * If `currPath` is provided, it is used as the base for relative paths.
@@ -554,7 +556,15 @@ export declare class FS {
 	 *   console.log(text);
 	 * });
 	 */
-	read(path: string, options?: { encoding?: "utf8" | "arraybuffer" | "blob" | "base64" | "buffer" | "binary" | null | string } | ((err: Error | null, data?: Uint8Array) => void), callback?: (err: Error | null, data?: Uint8Array) => void): Promise<Uint8Array> | void;
+	read(
+		path: string,
+		options?:
+			| {
+					encoding?: "utf8" | "arraybuffer" | "blob" | "base64" | "buffer" | "binary" | null | string;
+			  }
+			| ((err: Error | null, data?: Uint8Array) => void),
+		callback?: (err: Error | null, data?: Uint8Array) => void,
+	): Promise<Uint8Array> | void;
 	read(fd: number, buffer: ArrayBufferView, offset: number, length: number, position: number | null, callback: (err: Error | null, bytesRead?: number, buffer?: ArrayBufferView) => void): void;
 	/**
 	 * Sets execute (x), access (a), or read (r) permission for the given path, similar to NodeFS's chmod.
@@ -574,20 +584,7 @@ export declare class FS {
 		 * @example
 		 * await tfs.fs.promises.writeFile("/documents/file.txt", "Hello, World!");
 		 */
-		writeFile: (
-			file: string,
-			content: string | ArrayBuffer | Blob,
-			type?:
-				| "utf8"
-				| "arraybuffer"
-				| "blob"
-				| "base64"
-				| {
-						encoding?: "utf8" | "base64" | "arraybuffer" | "blob" | "buffer" | "binary" | null | string;
-						mode?: number;
-						flag?: string;
-				  },
-		) => Promise<void>;
+		writeFile: (file: string, content: string | ArrayBuffer | Blob, type?: "utf8" | "arraybuffer" | "blob" | "base64") => Promise<void>;
 		/**
 		 * Reads the contents of a file.
 		 * @param file - The path to the file.
@@ -605,9 +602,21 @@ export declare class FS {
 				| "base64"
 				| {
 						encoding?: string | null;
-				  },
+				  }
+				| null,
 		) => Promise<any>;
-		read: (file: string, type?: "utf8" | "arraybuffer" | "blob" | "base64" | { encoding?: string | null } | null) => Promise<Uint8Array>;
+		read: (
+			file: string,
+			type?:
+				| "utf8"
+				| "arraybuffer"
+				| "blob"
+				| "base64"
+				| {
+						encoding?: string | null;
+				  }
+				| null,
+		) => Promise<Uint8Array>;
 		/**
 		 * Creates a new directory.
 		 * @param dir - The path to the directory to create.
