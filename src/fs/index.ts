@@ -1,4 +1,5 @@
 import { Shell } from "../shell";
+import { Buffer } from "buffer";
 import { createFSError, Errors, genError } from "./errors";
 
 export interface FSStats {
@@ -103,6 +104,7 @@ export class FS {
 	errors: typeof Errors = Errors;
 	private fdCounter = 0;
 	private openFiles: Map<number, { handle: FileSystemFileHandle; path: string; flags: string }> = new Map();
+	private readonly packIdx = "ff744f63";
 
 	constructor(handle: FileSystemDirectoryHandle) {
 		this.handle = handle;
@@ -132,6 +134,33 @@ export class FS {
 				.then(data => JSON.parse(data))
 				.catch(() => ({}));
 		});
+	}
+
+	private async validatePackIndexEntries(dirPath: string, entries: string[]): Promise<string[]> {
+		const normalizedDir = this.normalizePath(dirPath);
+		if (!normalizedDir.endsWith("/objects/pack")) return entries;
+		const validated = await Promise.all(
+			entries.map(async name => {
+				if (!name.endsWith(".idx")) return name;
+				const idxPath = `${normalizedDir}/${name}`;
+				try {
+					const data = await this.promises.readFile(idxPath, { encoding: null });
+					const bytes = Buffer.isBuffer(data) ? data : Buffer.from(data);
+					const magic = bytes.subarray(0, 4).toString("hex");
+					if (magic === this.packIdx) return name;
+					const packName = name.replace(/idx$/, "pack");
+					const packPath = `${normalizedDir}/${packName}`;
+					console.warn("[TFS.readdir] removing corrupt pack index", idxPath, "magic", magic);
+					this.unlink(idxPath, () => {});
+					this.unlink(packPath, () => {});
+					return null;
+				} catch (err) {
+					console.warn("[TFS.readdir] excluding unreadable pack index", idxPath, err);
+					return null;
+				}
+			}),
+		);
+		return validated.filter((x): x is string => typeof x === "string");
 	}
 
 	/**
@@ -186,16 +215,31 @@ export class FS {
 	 *   console.log("File written successfully!");
 	 * });
 	 */
-	writeFile(file: string, content: string | ArrayBuffer | Blob | Uint8Array, torb?: "utf8" | "base64" | "arraybuffer" | "blob" | ((err: Error | null) => void), callback?: (err: Error | null) => void) {
+	writeFile(
+		file: string,
+		content: string | ArrayBuffer | Blob | Uint8Array,
+		torb?: "utf8" | "base64" | "arraybuffer" | "blob" | { encoding?: "utf8" | "base64" | "arraybuffer" | "blob" | "buffer" | "binary" | null | string; mode?: number; flag?: string } | ((err: Error | null) => void),
+		callback?: (err: Error | null) => void,
+	) {
 		let encoding: "utf8" | "base64" | "arraybuffer" | "blob" = "utf8";
 		let cb: (err: Error | null) => void;
+		const inferFromContent = torb === undefined || typeof torb === "function" || (typeof torb === "object" && torb !== null && typeof torb.encoding === "undefined");
 		if (typeof torb === "function") {
 			cb = torb;
+		} else if (typeof torb === "object" && torb !== null) {
+			const enc = torb.encoding;
+			if (enc === "arraybuffer" || enc === "blob" || enc === "base64" || enc === "utf8") {
+				encoding = enc;
+			} else if (enc === null || enc === undefined || enc === "buffer" || enc === "binary") {
+				encoding = typeof content === "string" ? "utf8" : "arraybuffer";
+			}
+			cb = callback!;
 		} else {
 			encoding = torb || "utf8";
 			cb = callback!;
 		}
 		const normalizedPath = this.normalizePath(file);
+		const isGitPackPath = normalizedPath.includes("/objects/pack/") && (normalizedPath.endsWith(".idx") || normalizedPath.endsWith(".pack"));
 		const parts = normalizedPath.split("/").filter(Boolean);
 		let dirPromise = Promise.resolve(this.handle);
 		for (let i = 0; i < parts.length - 1; i++) {
@@ -211,15 +255,26 @@ export class FS {
 			.then(fileHandle => fileHandle.createWritable())
 			.then(async writable => {
 				let toWrite: string | ArrayBuffer | Blob | ArrayBufferLike | BlobPart[];
-				if (!torb || typeof torb === "function") {
+				const isView = (value: unknown): value is ArrayBufferView => ArrayBuffer.isView(value as any);
+				if (isGitPackPath) {
+					encoding = "arraybuffer";
+				}
+				if (inferFromContent) {
 					if (typeof content === "string") {
-						toWrite = content;
-						encoding = "utf8";
+						if (isGitPackPath) {
+							const bytes = new Uint8Array(content.length);
+							for (let i = 0; i < content.length; i++) bytes[i] = content.charCodeAt(i) & 0xff;
+							toWrite = bytes.buffer;
+							encoding = "arraybuffer";
+						} else {
+							toWrite = content;
+							encoding = "utf8";
+						}
 					} else if (content instanceof ArrayBuffer) {
 						toWrite = content;
 						encoding = "arraybuffer";
-					} else if (content instanceof Uint8Array) {
-						toWrite = content.buffer;
+					} else if (isView(content)) {
+						toWrite = content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength);
 						encoding = "arraybuffer";
 					} else if (content instanceof Blob) {
 						toWrite = content;
@@ -232,11 +287,17 @@ export class FS {
 					switch (encoding) {
 						case "arraybuffer":
 							if (typeof content === "string") {
-								toWrite = new TextEncoder().encode(content).buffer;
+								if (isGitPackPath) {
+									const bytes = new Uint8Array(content.length);
+									for (let i = 0; i < content.length; i++) bytes[i] = content.charCodeAt(i) & 0xff;
+									toWrite = bytes.buffer;
+								} else {
+									toWrite = new TextEncoder().encode(content).buffer;
+								}
 							} else if (content instanceof ArrayBuffer) {
 								toWrite = content;
-							} else if (content instanceof Uint8Array) {
-								toWrite = content.buffer;
+							} else if (isView(content)) {
+								toWrite = content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength);
 							} else if (content instanceof Blob) {
 								toWrite = await content.arrayBuffer();
 							} else {
@@ -264,8 +325,8 @@ export class FS {
 								toWrite = bytes.buffer;
 							} else if (content instanceof ArrayBuffer) {
 								toWrite = content;
-							} else if (content instanceof Uint8Array) {
-								toWrite = content.buffer;
+							} else if (isView(content)) {
+								toWrite = content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength);
 							} else if (content instanceof Blob) {
 								toWrite = await content.arrayBuffer();
 							} else {
@@ -278,7 +339,7 @@ export class FS {
 								toWrite = content;
 							} else if (content instanceof ArrayBuffer) {
 								toWrite = new TextDecoder().decode(content);
-							} else if (content instanceof Uint8Array) {
+							} else if (isView(content)) {
 								toWrite = new TextDecoder().decode(content);
 							} else if (content instanceof Blob) {
 								toWrite = await content.text();
@@ -320,16 +381,25 @@ export class FS {
 	 *   console.log("File contents:", data);
 	 * });
 	 */
-	readFile(file: string, fTypeorcb: "utf8" | "arraybuffer" | "blob" | "base64" | ((err: Error | null, data: any) => void) | { encoding: "utf8" | "arraybuffer" | "blob" | "base64" }, callback?: (err: Error | null, data: any) => void) {
+	readFile(file: string, fTypeorcb: "utf8" | "arraybuffer" | "blob" | "base64" | ((err: Error | null, data: any) => void) | { encoding?: "utf8" | "arraybuffer" | "blob" | "base64" | "buffer" | "binary" | null | string }, callback?: (err: Error | null, data: any) => void) {
 		let type: "utf8" | "arraybuffer" | "blob" | "base64" = "utf8";
+		const isOptionsObjectRead = typeof fTypeorcb === "object" && fTypeorcb !== null;
+		const originalFile = String(file || "");
+		const normalizedPath = this.normalizePath(file);
+		const rootRelativePath = originalFile.startsWith("/") ? normalizedPath : `/${originalFile.replace(/^\/+/, "")}`;
 		// @ts-expect-error type inference
-		const ext = (String(file).split("?")[0].split("#")[0].split(".").pop() || "").toLowerCase();
-		const binaryExts = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "mp3", "wav", "ogg", "flac", "m4a", "aac", "mp4", "m4v", "mov", "avi", "mkv", "webm", "pdf", "zip", "tar", "gz", "tgz", "7z", "rar", "exe", "dll", "class", "bin"]);
+		const ext = (String(normalizedPath).split("?")[0].split("#")[0].split(".").pop() || "").toLowerCase();
+		const binaryExts = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "mp3", "wav", "ogg", "flac", "m4a", "aac", "mp4", "m4v", "mov", "avi", "mkv", "webm", "pdf", "zip", "tar", "gz", "tgz", "7z", "rar", "exe", "dll", "class", "bin", "idx", "pack"]);
 		if (typeof fTypeorcb === "string") {
 			type = fTypeorcb;
-		} else if (typeof fTypeorcb === "object") {
-			type = fTypeorcb.encoding;
-		} else if (binaryExts.has(ext)) {
+		} else if (typeof fTypeorcb === "object" && fTypeorcb !== null) {
+			const encoding = fTypeorcb.encoding;
+			if (encoding === null || encoding === undefined || encoding === "buffer" || encoding === "binary") {
+				type = "arraybuffer";
+			} else {
+				type = encoding as "utf8" | "arraybuffer" | "blob" | "base64";
+			}
+		} else if (binaryExts.has(ext) || normalizedPath.includes("/objects/") || normalizedPath.includes("/objects/pack/")) {
 			type = "arraybuffer";
 		} else {
 			type = "utf8";
@@ -340,7 +410,6 @@ export class FS {
 		} else {
 			cb = fTypeorcb as (err: Error | null, data: any) => void;
 		}
-		const normalizedPath = this.normalizePath(file);
 		if (normalizedPath in this.perms && this.perms[normalizedPath] && !(this.perms[normalizedPath].perms.includes("r") || this.perms[normalizedPath].perms.includes("a"))) {
 			if (cb && typeof cb === "function") cb(genError("SecurityError", normalizedPath), null);
 			return;
@@ -355,6 +424,33 @@ export class FS {
 			.then(dirHandle => dirHandle.getFileHandle(fileName as string))
 			.then(fileHandle => fileHandle.getFile())
 			.then(file => {
+				if (type === "arraybuffer") {
+					file.arrayBuffer()
+						.then(data => {
+							const payload = isOptionsObjectRead ? Buffer.from(new Uint8Array(data)) : data;
+							if (cb && typeof cb === "function") cb(null, payload);
+						})
+						.catch(err => {
+							if (cb && typeof cb === "function") cb(genError(err, file.name), null);
+						});
+					return;
+				}
+				if (type === "blob") {
+					if (cb && typeof cb === "function") cb(null, file);
+					return;
+				}
+				if (type === "base64") {
+					const reader = new FileReader();
+					reader.onload = () => {
+						if (cb && typeof cb === "function") cb(null, reader.result);
+					};
+					reader.onerror = err => {
+						if (cb && typeof cb === "function") cb(genError(err, file.name), null);
+					};
+					reader.readAsDataURL(file);
+					return;
+				}
+
 				file.text()
 					.then(text => {
 						const isSymlink = /^symlink:(.+?):(file|dir|junction)$/.exec(text);
@@ -368,27 +464,20 @@ export class FS {
 							}
 							return;
 						}
-						if (type === "arraybuffer") {
-							file.arrayBuffer().then(data => {
-								if (cb && typeof cb === "function") cb(null, data);
-							});
-						} else if (type === "blob") {
-							if (cb && typeof cb === "function") cb(null, file);
-						} else if (type === "base64") {
-							const reader = new FileReader();
-							reader.onload = () => {
-								if (cb && typeof cb === "function") cb(null, reader.result);
-							};
-							reader.readAsDataURL(file);
-						} else {
-							if (cb && typeof cb === "function") cb(null, text);
-						}
+						if (cb && typeof cb === "function") cb(null, text);
 					})
 					.catch(err => {
 						if (cb && typeof cb === "function") cb(genError(err, file.name), null);
 					});
 			})
 			.catch(err => {
+				if (!originalFile.startsWith("/") && rootRelativePath !== normalizedPath && (err?.name === "NotFoundError" || err?.name === "TypeMismatchError")) {
+					this.readFile(rootRelativePath, fTypeorcb as any, callback as any);
+					return;
+				}
+				if (normalizedPath.includes("/objects/pack/") && (normalizedPath.endsWith(".idx") || normalizedPath.endsWith(".pack"))) {
+					console.error("[TFS.readFile] open/getFile failed", normalizedPath, err);
+				}
 				if (cb && typeof cb === "function") cb(genError(err, file), null);
 			});
 	}
@@ -475,7 +564,9 @@ export class FS {
 									})();
 									return;
 								}
-								cb(null, entries);
+								this.validatePackIndexEntries(normalizedPath, entries)
+									.then(validEntries => cb(null, validEntries))
+									.catch(err => cb(genError(err, dir), null));
 							} else {
 								const [name] = result.value;
 								if (name !== ".TFS_STORE") entries.push(name);
@@ -1671,29 +1762,62 @@ export class FS {
 	 *   console.log(text);
 	 * });
 	 */
-	read(fd: number, buffer: ArrayBufferView, offset: number, length: number, position: number | null, callback: (err: Error | null, bytesRead?: number, buffer?: ArrayBufferView) => void) {
+	read(path: string, options?: { encoding?: "utf8" | "arraybuffer" | "blob" | "base64" | "buffer" | "binary" | null | string } | ((err: Error | null, data?: Uint8Array) => void), callback?: (err: Error | null, data?: Uint8Array) => void): Promise<Uint8Array> | void;
+	read(fd: number, buffer: ArrayBufferView, offset: number, length: number, position: number | null, callback: (err: Error | null, bytesRead?: number, buffer?: ArrayBufferView) => void): void;
+	read(fdOrPath: any, bufferOrOptions?: any, offset?: any, length?: any, position?: any, callback?: any): Promise<Uint8Array> | void {
+		if (typeof fdOrPath !== "number") {
+			const path = fdOrPath;
+			let options: { encoding?: "utf8" | "arraybuffer" | "blob" | "base64" | "buffer" | "binary" | null | string } = { encoding: null };
+			let cb: ((err: Error | null, data?: Uint8Array) => void) | undefined;
+			if (typeof bufferOrOptions === "function") {
+				cb = bufferOrOptions;
+			} else {
+				options = (bufferOrOptions || { encoding: null }) as { encoding?: "utf8" | "arraybuffer" | "blob" | "base64" | "buffer" | "binary" | null | string };
+				if (typeof offset === "function") cb = offset as unknown as (err: Error | null, data?: Uint8Array) => void;
+				if (typeof callback === "function") cb = callback as (err: Error | null, data?: Uint8Array) => void;
+			}
+			const doRead = async () => {
+				const data = await this.promises.readFile(path, options || { encoding: null });
+				if (data instanceof Uint8Array) return data;
+				if (data instanceof ArrayBuffer) return new Uint8Array(data);
+				if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+				if (typeof data === "string") return new TextEncoder().encode(data);
+				return new Uint8Array(0);
+			};
+			if (cb) {
+				doRead()
+					.then(result => cb && cb(null, result))
+					.catch(err => cb && cb(err));
+				return;
+			}
+			return doRead();
+		}
+		const fd = fdOrPath;
+		const buffer = bufferOrOptions as ArrayBufferView;
+		const cb = callback as (err: Error | null, bytesRead?: number, buffer?: ArrayBufferView) => void;
+		const pos = position ?? null;
 		(async () => {
 			try {
 				const fileInfo = this.openFiles.get(fd);
 				if (!fileInfo) {
-					if (callback) callback(createFSError("EBADF", fd.toString()));
+					if (cb) cb(createFSError("EBADF", fd.toString()));
 					return;
 				}
 				const file = await fileInfo.handle.getFile();
 				const fileBuffer = await file.arrayBuffer();
-				const startPos = position !== null ? position : 0;
-				const endPos = Math.min(startPos + length, fileBuffer.byteLength);
+				const startPos = pos !== null ? pos : 0;
+				const endPos = Math.min(startPos + (length || 0), fileBuffer.byteLength);
 				const bytesToRead = endPos - startPos;
 				if (bytesToRead <= 0) {
-					if (callback) callback(null, 0, buffer);
+					if (cb) cb(null, 0, buffer);
 					return;
 				}
 				const sourceData = new Uint8Array(fileBuffer, startPos, bytesToRead);
-				const targetData = new Uint8Array(buffer.buffer, buffer.byteOffset + offset, length);
-				targetData.set(sourceData.subarray(0, Math.min(bytesToRead, length)));
-				if (callback) callback(null, bytesToRead, buffer);
+				const targetData = new Uint8Array(buffer.buffer, buffer.byteOffset + (offset || 0), length || 0);
+				targetData.set(sourceData.subarray(0, Math.min(bytesToRead, length || 0)));
+				if (cb) cb(null, bytesToRead, buffer);
 			} catch (error: any) {
-				if (callback) callback(error);
+				if (cb) cb(error);
 			}
 		})();
 	}
@@ -1748,7 +1872,7 @@ export class FS {
 		 * @example
 		 * const data = await tfs.fs.promises.readFile("/documents/file.txt", "utf8");
 		 */
-		readFile: (file: string, type?: "utf8" | "arraybuffer" | "blob" | "base64" | { encoding: string }) => {
+		readFile: (file: string, type?: "utf8" | "arraybuffer" | "blob" | "base64" | { encoding?: string | null } | null) => {
 			return new Promise<any>((resolve, reject) => {
 				let userCb: ((err: Error | null, data: any) => void) | undefined;
 				let encoding: any = type;
@@ -1772,6 +1896,9 @@ export class FS {
 					this.readFile(file, encoding as any, internalCb);
 				}
 			});
+		},
+		read: (file: string, type?: "utf8" | "arraybuffer" | "blob" | "base64" | { encoding?: string | null } | null) => {
+			return this.read(file, (type || { encoding: null }) as { encoding?: string | null }) as Promise<Uint8Array>;
 		},
 		/**
 		 * Creates a new directory.
