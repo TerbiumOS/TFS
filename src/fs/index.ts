@@ -173,13 +173,7 @@ export class FS {
 
 	private invalidatePath(path: string) {
 		const normalizedPath = this.normalizePath(path);
-		const prefixes = [
-			`dir:${normalizedPath}`,
-			`read:${normalizedPath}:`,
-			`stat:${normalizedPath}`,
-			`lstat:${normalizedPath}`,
-			`list:${normalizedPath}`,
-		];
+		const prefixes = [`dir:${normalizedPath}`, `read:${normalizedPath}:`, `stat:${normalizedPath}`, `lstat:${normalizedPath}`, `list:${normalizedPath}`];
 		for (const cache of [this.pathHandleCache, this.readCache, this.statCache, this.listCache]) {
 			for (const key of Array.from(cache.keys())) {
 				if (prefixes.some(prefix => key === prefix || key.startsWith(prefix))) {
@@ -641,8 +635,8 @@ export class FS {
 												}
 											};
 											await walk(this.normalizePath(dir));
-												this.cachedSet(this.listCache, cacheKey, out);
-												cb(null, out);
+											this.cachedSet(this.listCache, cacheKey, out);
+											cb(null, out);
 										} catch (err) {
 											cb(genError(err, dir), null);
 										}
