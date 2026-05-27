@@ -86,6 +86,6 @@ Libraries Used
 
 Made with ❤️ By the Terbium Development Team
 
-&copy; Copyright 2025 TerbiumOS Development
+&copy; Copyright 2026 TerbiumOS Development
 
 Licensed Under the [Apache 2.0 License](./LICENSE)
