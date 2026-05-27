@@ -2,6 +2,41 @@ import { Shell } from "../shell";
 import { Buffer } from "buffer";
 import { createFSError, Errors, genError } from "./errors";
 
+const BINARY_EXTENSIONS = new Set([
+	"png",
+	"jpg",
+	"jpeg",
+	"gif",
+	"webp",
+	"bmp",
+	"ico",
+	"mp3",
+	"wav",
+	"ogg",
+	"flac",
+	"m4a",
+	"aac",
+	"mp4",
+	"m4v",
+	"mov",
+	"avi",
+	"mkv",
+	"webm",
+	"pdf",
+	"zip",
+	"tar",
+	"gz",
+	"tgz",
+	"7z",
+	"rar",
+	"exe",
+	"dll",
+	"class",
+	"bin",
+	"idx",
+	"pack",
+]);
+
 export interface FSStats {
 	name: string;
 	size: number;
@@ -104,13 +139,8 @@ export class FS {
 	errors: typeof Errors = Errors;
 	private fdCounter = 0;
 	private openFiles: Map<number, { handle: FileSystemFileHandle; path: string; flags: string }> = new Map();
+	private readonly directoryHandleCache = new Map<string, Promise<FileSystemDirectoryHandle>>();
 	private readonly packIdx = "ff744f63";
-	private readonly pathHandleCache = new Map<string, FileSystemDirectoryHandle>();
-	private readonly readCache = new Map<string, string | ArrayBuffer | Blob | Uint8Array>();
-	private readonly statCache = new Map<string, FSStats>();
-	private readonly listCache = new Map<string, string[]>();
-	private readonly cacheLimit = 128;
-	private readonly fileCacheLimitBytes = 512 * 1024;
 
 	constructor(handle: FileSystemDirectoryHandle) {
 		this.handle = handle;
@@ -142,73 +172,6 @@ export class FS {
 		});
 	}
 
-	private parentPath(path: string) {
-		const normalizedPath = this.normalizePath(path);
-		if (normalizedPath === "/") return "/";
-		const parts = normalizedPath.split("/").filter(Boolean);
-		if (parts.length <= 1) return "/";
-		return `/${parts.slice(0, -1).join("/")}`;
-	}
-
-	private trimCache<T>(cache: Map<string, T>) {
-		while (cache.size > this.cacheLimit) {
-			const oldestKey = cache.keys().next().value;
-			if (typeof oldestKey !== "string") break;
-			cache.delete(oldestKey);
-		}
-	}
-
-	private cachedGet<T>(cache: Map<string, T>, key: string) {
-		const value = cache.get(key);
-		if (value === undefined) return undefined;
-		cache.delete(key);
-		cache.set(key, value);
-		return value;
-	}
-
-	private cachedSet<T>(cache: Map<string, T>, key: string, value: T) {
-		cache.set(key, value);
-		this.trimCache(cache);
-	}
-
-	private invalidatePath(path: string) {
-		const normalizedPath = this.normalizePath(path);
-		const prefixes = [`dir:${normalizedPath}`, `read:${normalizedPath}:`, `stat:${normalizedPath}`, `lstat:${normalizedPath}`, `list:${normalizedPath}`];
-		for (const cache of [this.pathHandleCache, this.readCache, this.statCache, this.listCache]) {
-			for (const key of Array.from(cache.keys())) {
-				if (prefixes.some(prefix => key === prefix || key.startsWith(prefix))) {
-					cache.delete(key);
-				}
-			}
-		}
-	}
-
-	private invalidatePathAndParent(path: string) {
-		const normalizedPath = this.normalizePath(path);
-		this.invalidatePath(normalizedPath);
-		const parent = this.parentPath(normalizedPath);
-		if (parent !== normalizedPath) this.invalidatePath(parent);
-	}
-
-	private async resolveDirectoryHandle(path: string, create = false) {
-		const normalizedPath = this.normalizePath(path);
-		if (normalizedPath === "/") return this.handle;
-		const parts = normalizedPath.split("/").filter(Boolean);
-		let currentHandle: FileSystemDirectoryHandle = this.handle;
-		let currentPath = "";
-		for (const part of parts) {
-			currentPath += `/${part}`;
-			const cached = this.cachedGet(this.pathHandleCache, `dir:${currentPath}`);
-			if (cached) {
-				currentHandle = cached;
-				continue;
-			}
-			currentHandle = await currentHandle.getDirectoryHandle(part, { create });
-			this.cachedSet(this.pathHandleCache, `dir:${currentPath}`, currentHandle);
-		}
-		return currentHandle;
-	}
-
 	private async validatePackIndexEntries(dirPath: string, entries: string[]): Promise<string[]> {
 		const normalizedDir = this.normalizePath(dirPath);
 		if (!normalizedDir.endsWith("/objects/pack")) return entries;
@@ -235,6 +198,35 @@ export class FS {
 		);
 		return validated.filter((x): x is string => typeof x === "string");
 	}
+
+		private splitPath(path: string): string[] {
+			return path.split("/").filter(Boolean);
+		}
+
+		private clearDirectoryCache(path: string) {
+			const normalizedPath = this.normalizePath(path);
+			for (const key of Array.from(this.directoryHandleCache.keys())) {
+				if (key === normalizedPath || key.startsWith(normalizedPath + "/")) {
+					this.directoryHandleCache.delete(key);
+				}
+			}
+		}
+
+		private getDirectoryHandleForPath(path: string, create = false): Promise<FileSystemDirectoryHandle> {
+			const normalizedPath = this.normalizePath(path);
+			if (normalizedPath === "/") return Promise.resolve(this.handle);
+			if (!create) {
+				const cached = this.directoryHandleCache.get(normalizedPath);
+				if (cached) return cached;
+			}
+			const parts = this.splitPath(normalizedPath);
+			let dirPromise: Promise<FileSystemDirectoryHandle> = Promise.resolve(this.handle);
+			for (const part of parts) {
+				dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(part, { create }));
+			}
+			if (!create) this.directoryHandleCache.set(normalizedPath, dirPromise);
+			return dirPromise;
+		}
 
 	/**
 	 * Normalizes the given path, resolving relative segments like "." and "..".
@@ -317,10 +309,10 @@ export class FS {
 			if (cb && typeof cb === "function") cb(genError("SecurityError", normalizedPath));
 			return;
 		}
-		const parts = normalizedPath.split("/").filter(Boolean);
-		const fileName = parts[parts.length - 1];
-		const parentPath = parts.length > 1 ? `/${parts.slice(0, -1).join("/")}` : "/";
-		this.resolveDirectoryHandle(parentPath, true)
+		const pathParts = this.splitPath(normalizedPath);
+		const fileName = pathParts[pathParts.length - 1];
+		const parentPath = pathParts.length > 1 ? `/${pathParts.slice(0, -1).join("/")}` : "/";
+		this.getDirectoryHandleForPath(parentPath, true)
 			.then(dirHandle => dirHandle.getFileHandle(fileName as string, { create: true }))
 			.then(fileHandle => fileHandle.createWritable())
 			.then(async writable => {
@@ -425,7 +417,7 @@ export class FS {
 					this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
 				}
 				await writable.close();
-				this.invalidatePathAndParent(normalizedPath);
+				if (pathParts.length > 1) this.clearDirectoryCache(parentPath);
 			})
 			.then(() => {
 				if (cb && typeof cb === "function") cb(null);
@@ -460,7 +452,6 @@ export class FS {
 		const rootRelativePath = originalFile.startsWith("/") ? normalizedPath : `/${originalFile.replace(/^\/+/, "")}`;
 		// @ts-expect-error type inference
 		const ext = (String(normalizedPath).split("?")[0].split("#")[0].split(".").pop() || "").toLowerCase();
-		const binaryExts = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "mp3", "wav", "ogg", "flac", "m4a", "aac", "mp4", "m4v", "mov", "avi", "mkv", "webm", "pdf", "zip", "tar", "gz", "tgz", "7z", "rar", "exe", "dll", "class", "bin", "idx", "pack"]);
 		if (typeof fTypeorcb === "string") {
 			type = fTypeorcb;
 		} else if (typeof fTypeorcb === "object" && fTypeorcb !== null) {
@@ -470,7 +461,7 @@ export class FS {
 			} else {
 				type = encoding as "utf8" | "arraybuffer" | "blob" | "base64";
 			}
-		} else if (binaryExts.has(ext) || normalizedPath.includes("/objects/") || normalizedPath.includes("/objects/pack/")) {
+		} else if (BINARY_EXTENSIONS.has(ext) || normalizedPath.includes("/objects/") || normalizedPath.includes("/objects/pack/")) {
 			type = "arraybuffer";
 		} else {
 			type = "utf8";
@@ -485,16 +476,10 @@ export class FS {
 			if (cb && typeof cb === "function") cb(genError("SecurityError", normalizedPath), null);
 			return;
 		}
-		const cacheKey = `read:${normalizedPath}:${type}`;
-		const cached = this.cachedGet(this.readCache, cacheKey);
-		if (cached !== undefined) {
-			if (cb && typeof cb === "function") cb(null, cached);
-			return;
-		}
-		const parts = normalizedPath.split("/").filter(Boolean);
-		const fileName = parts[parts.length - 1];
-		const parentPath = parts.length > 1 ? `/${parts.slice(0, -1).join("/")}` : "/";
-		this.resolveDirectoryHandle(parentPath)
+		const pathParts = this.splitPath(normalizedPath);
+		const fileName = pathParts[pathParts.length - 1];
+		const parentPath = pathParts.length > 1 ? `/${pathParts.slice(0, -1).join("/")}` : "/";
+		this.getDirectoryHandleForPath(parentPath)
 			.then(dirHandle => dirHandle.getFileHandle(fileName as string))
 			.then(fileHandle => fileHandle.getFile())
 			.then(file => {
@@ -502,7 +487,6 @@ export class FS {
 					file.arrayBuffer()
 						.then(data => {
 							const payload = isOptionsObjectRead ? Buffer.from(new Uint8Array(data)) : data;
-							if (file.size <= this.fileCacheLimitBytes) this.cachedSet(this.readCache, cacheKey, payload as string | ArrayBuffer | Blob | Uint8Array);
 							if (cb && typeof cb === "function") cb(null, payload);
 						})
 						.catch(err => {
@@ -511,14 +495,12 @@ export class FS {
 					return;
 				}
 				if (type === "blob") {
-					if (file.size <= this.fileCacheLimitBytes) this.cachedSet(this.readCache, cacheKey, file);
 					if (cb && typeof cb === "function") cb(null, file);
 					return;
 				}
 				if (type === "base64") {
 					const reader = new FileReader();
 					reader.onload = () => {
-						if (file.size <= this.fileCacheLimitBytes && typeof reader.result === "string") this.cachedSet(this.readCache, cacheKey, reader.result);
 						if (cb && typeof cb === "function") cb(null, reader.result);
 					};
 					reader.onerror = err => {
@@ -541,7 +523,7 @@ export class FS {
 							}
 							return;
 						}
-						if (file.size <= this.fileCacheLimitBytes) this.cachedSet(this.readCache, cacheKey, text);
+						if (cb && typeof cb === "function") cb(null, text);
 					})
 					.catch(err => {
 						if (cb && typeof cb === "function") cb(genError(err, file.name), null);
@@ -572,14 +554,13 @@ export class FS {
 	mkdir(dir: string, callback?: (err: Error | null) => void) {
 		const normalizedPath = this.normalizePath(dir);
 		if (callback) {
-			this.resolveDirectoryHandle(normalizedPath, true)
+			this.getDirectoryHandleForPath(normalizedPath, true)
 				.then(() => callback(null))
 				.catch(err => {
 					callback(genError(err, dir));
 				});
 			updMeta(this.handle, { [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } });
 			this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
-			this.invalidatePathAndParent(normalizedPath);
 		}
 	}
 
@@ -598,68 +579,43 @@ export class FS {
 		const cb = typeof optsorcb === "function" ? optsorcb : callback!;
 		const options = typeof optsorcb === "object" ? optsorcb : null;
 		const normalizedPath = this.normalizePath(dir);
-		const cacheKey = options && options.recursive ? `list:${normalizedPath}:recursive` : `list:${normalizedPath}`;
-		const cached = this.cachedGet(this.listCache, cacheKey);
-		if (cached !== undefined) {
-			cb(null, cached);
-			return;
-		}
-		const parts = normalizedPath.split("/").filter(Boolean);
-		let dirPromise = Promise.resolve(this.handle);
-		for (const part of parts) {
-			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(part));
-		}
-		dirPromise
+			this.getDirectoryHandleForPath(normalizedPath)
 			.then(dirHandle => {
 				const entries: string[] = [];
-				const ent = dirHandle.entries();
-				const next = () => {
-					ent.next()
-						.then(result => {
-							if (result.done) {
-								if (options && options.recursive) {
-									(async () => {
-										try {
-											const out: string[] = [];
-											const walk = async (basePath: string, relPrefix = "") => {
-												const names = await this.promises.readdir(basePath).catch(() => []);
-												for (const name of names) {
-													if (name === ".TFS_STORE") continue;
-													const rel = relPrefix ? `${relPrefix}/${name}` : name;
-													out.push(rel);
-													const full = this.normalizePath(basePath + "/" + name);
-													const st = await this.promises.stat(full).catch(() => null);
-													if (st && st.type === "DIRECTORY") {
-														await walk(full, rel);
-													}
-												}
-											};
-											await walk(this.normalizePath(dir));
-											this.cachedSet(this.listCache, cacheKey, out);
-											cb(null, out);
-										} catch (err) {
-											cb(genError(err, dir), null);
+					if (options && options.recursive) {
+						(async () => {
+							try {
+								const out: string[] = [];
+								const walk = async (baseHandle: FileSystemDirectoryHandle, relPrefix = "") => {
+									for await (const [name, entryHandle] of baseHandle.entries()) {
+										if (name === ".TFS_STORE") continue;
+										const rel = relPrefix ? `${relPrefix}/${name}` : name;
+										out.push(rel);
+										if (entryHandle.kind === "directory") {
+											await walk(entryHandle as FileSystemDirectoryHandle, rel);
 										}
-									})();
-									return;
-								}
-								this.validatePackIndexEntries(normalizedPath, entries)
-									.then(validEntries => {
-										this.cachedSet(this.listCache, cacheKey, validEntries);
-										cb(null, validEntries);
-									})
-									.catch(err => cb(genError(err, dir), null));
-							} else {
-								const [name] = result.value;
-								if (name !== ".TFS_STORE") entries.push(name);
-								next();
+									}
+								};
+								await walk(dirHandle);
+								cb(null, out);
+							} catch (err) {
+								cb(genError(err, dir), null);
 							}
-						})
-						.catch(err => {
+						})();
+						return;
+					}
+					(async () => {
+						try {
+							for await (const [name] of dirHandle.entries()) {
+								if (name !== ".TFS_STORE") entries.push(name);
+							}
+							this.validatePackIndexEntries(normalizedPath, entries)
+								.then(validEntries => cb(null, validEntries))
+								.catch(err => cb(genError(err, dir), null));
+						} catch (err) {
 							cb(genError(err, dir), null);
-						});
-				};
-				next();
+						}
+					})();
 			})
 			.catch(err => {
 				cb(genError(err, dir), null);
@@ -679,18 +635,8 @@ export class FS {
 	 */
 	stat(path: string, callback: (err: Error | null, stats?: FSStats | null) => void) {
 		const normalizedPath = this.normalizePath(path);
-		const cacheKey = `stat:${normalizedPath}`;
-		const cached = this.cachedGet(this.statCache, cacheKey);
-		const finish = (stats: FSStats) => {
-			this.cachedSet(this.statCache, cacheKey, stats);
-			callback(null, stats);
-		};
-		if (cached !== undefined) {
-			callback(null, cached);
-			return;
-		}
 		if (normalizedPath === "/") {
-			finish({
+			callback(null, {
 				name: "/",
 				size: 0,
 				mime: "DIRECTORY",
@@ -711,12 +657,9 @@ export class FS {
 			});
 			return;
 		}
-		const parts = normalizedPath.split("/").filter(Boolean);
-		let dirPromise = Promise.resolve(this.handle);
-		for (let i = 0; i < parts.length - 1; i++) {
-			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(parts[i] as string));
-		}
-		const lastPart = parts[parts.length - 1];
+		const pathParts = this.splitPath(normalizedPath);
+		const lastPart = pathParts[pathParts.length - 1];
+		const parentPath = pathParts.length > 1 ? `/${pathParts.slice(0, -1).join("/")}` : "/";
 		const perms = this.perms[normalizedPath];
 		let perm: number;
 		if (perms && perms.perms.includes("a")) {
@@ -728,7 +671,7 @@ export class FS {
 		} else {
 			perm = 0o100644;
 		}
-		dirPromise
+		this.getDirectoryHandleForPath(parentPath)
 			.then(dirHandle =>
 				dirHandle
 					.getFileHandle(lastPart as string)
@@ -742,7 +685,7 @@ export class FS {
 										if (err) {
 											callback(genError(err, target), null);
 										} else if (stats) {
-											finish({
+											callback(null, {
 												...stats,
 												dev: "OPFS",
 												mime: "application/symlink",
@@ -785,7 +728,7 @@ export class FS {
 							dirHandle
 								.getDirectoryHandle(lastPart as string)
 								.then(() =>
-									finish({
+									callback(null, {
 										name: lastPart as string,
 										size: 0,
 										type: "DIRECTORY",
@@ -812,7 +755,7 @@ export class FS {
 							dirHandle
 								.getDirectoryHandle(lastPart as string)
 								.then(() =>
-									finish({
+									callback(null, {
 										name: lastPart as string,
 										size: 0,
 										type: "DIRECTORY",
@@ -858,18 +801,8 @@ export class FS {
 	 */
 	lstat(path: string, callback: (err: Error | null, stats?: FSStats | null) => void) {
 		const normalizedPath = this.normalizePath(path);
-		const cacheKey = `lstat:${normalizedPath}`;
-		const cached = this.cachedGet(this.statCache, cacheKey);
-		const finish = (stats: FSStats) => {
-			this.cachedSet(this.statCache, cacheKey, stats);
-			callback(null, stats);
-		};
-		if (cached !== undefined) {
-			callback(null, cached);
-			return;
-		}
 		if (normalizedPath === "/") {
-			finish({
+			callback(null, {
 				name: "/",
 				size: 0,
 				type: "DIRECTORY",
@@ -890,12 +823,9 @@ export class FS {
 			});
 			return;
 		}
-		const parts = normalizedPath.split("/").filter(Boolean);
-		let dirPromise = Promise.resolve(this.handle);
-		for (let i = 0; i < parts.length - 1; i++) {
-			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(parts[i] as string));
-		}
-		const lastPart = parts[parts.length - 1];
+		const pathParts = this.splitPath(normalizedPath);
+		const lastPart = pathParts[pathParts.length - 1];
+		const parentPath = pathParts.length > 1 ? `/${pathParts.slice(0, -1).join("/")}` : "/";
 		const perms = this.perms[normalizedPath];
 		let perm: number;
 		if (perms && perms.perms.includes("a")) {
@@ -907,13 +837,13 @@ export class FS {
 		} else {
 			perm = 0o100644;
 		}
-		dirPromise
+		this.getDirectoryHandleForPath(parentPath)
 			.then(dirHandle =>
 				dirHandle
 					.getFileHandle(lastPart as string)
 					.then(fileHandle =>
 						fileHandle.getFile().then(file =>
-							finish({
+							callback(null, {
 								name: file.name,
 								size: file.size,
 								mime: file.type,
@@ -939,7 +869,7 @@ export class FS {
 							dirHandle
 								.getDirectoryHandle(lastPart as string)
 								.then(() =>
-									finish({
+									callback(null, {
 										name: lastPart as string,
 										size: 0,
 										type: "DIRECTORY",
@@ -966,7 +896,7 @@ export class FS {
 							dirHandle
 								.getDirectoryHandle(lastPart as string)
 								.then(() =>
-									finish({
+									callback(null, {
 										name: lastPart as string,
 										size: 0,
 										type: "DIRECTORY",
@@ -1175,23 +1105,20 @@ export class FS {
 	 */
 	unlink(path: string, callback?: (err: Error | null) => void) {
 		const normalizedPath = this.normalizePath(path);
-		const parts = normalizedPath.split("/").filter(Boolean);
-		let dirPromise: Promise<FileSystemDirectoryHandle> = Promise.resolve(this.handle);
-		for (let i = 0; i < parts.length - 1; i++) {
-			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(parts[i] as string));
-		}
+		const pathParts = this.splitPath(normalizedPath);
+		const fileName = pathParts[pathParts.length - 1];
+		const parentPath = pathParts.length > 1 ? `/${pathParts.slice(0, -1).join("/")}` : "/";
 		if (normalizedPath in this.perms && this.perms[normalizedPath] && !(this.perms[normalizedPath].perms.includes("w") || this.perms[normalizedPath].perms.includes("a"))) {
 			if (callback) callback(genError("SecurityError", normalizedPath));
 			return;
 		}
 		updMeta(this.handle, { [normalizedPath]: true });
-		const fileName = parts[parts.length - 1];
-		dirPromise
+		this.getDirectoryHandleForPath(parentPath)
 			.then(dirHandle => {
 				return dirHandle.removeEntry(fileName as string);
 			})
 			.then(() => {
-				this.invalidatePathAndParent(normalizedPath);
+				if (pathParts.length > 1) this.clearDirectoryCache(parentPath);
 				if (callback) callback(null);
 			})
 			.catch(err => {
@@ -1212,23 +1139,20 @@ export class FS {
 	rmdir(path: string, optsorcb?: typeof callback | { recursive?: boolean }, callback?: (err: Error | null) => void) {
 		const normalizedPath = this.normalizePath(path);
 		const cb = typeof optsorcb === "function" ? optsorcb : callback!;
-		const parts = normalizedPath.split("/").filter(Boolean);
-		let dirPromise: Promise<FileSystemDirectoryHandle> = Promise.resolve(this.handle);
-		for (let i = 0; i < parts.length - 1; i++) {
-			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(parts[i] as string));
-		}
-		const dirName = parts[parts.length - 1];
+		const pathParts = this.splitPath(normalizedPath);
+		const dirName = pathParts[pathParts.length - 1];
+		const parentPath = pathParts.length > 1 ? `/${pathParts.slice(0, -1).join("/")}` : "/";
 		if (normalizedPath in this.perms && this.perms[normalizedPath] && !(this.perms[normalizedPath].perms.includes("w") || this.perms[normalizedPath].perms.includes("a"))) {
 			if (cb && typeof cb === "function") cb(genError("SecurityError", normalizedPath));
 			return;
 		}
 		updMeta(this.handle, { [normalizedPath]: true });
-		dirPromise
+		this.getDirectoryHandleForPath(parentPath)
 			.then(dirHandle => {
 				return dirHandle.removeEntry(dirName as string);
 			})
 			.then(() => {
-				this.invalidatePathAndParent(normalizedPath);
+				if (pathParts.length > 1) this.clearDirectoryCache(parentPath);
 				if (cb && typeof cb === "function") cb(null);
 			})
 			.catch(err => {
@@ -1269,6 +1193,8 @@ export class FS {
 						if (callback) callback(genError(cpErr, newP));
 						return;
 					}
+					this.clearDirectoryCache(oldP);
+					this.clearDirectoryCache(newP);
 					const updates: { [key: string]: any } = {};
 					const dels: { [key: string]: boolean } = {};
 					for (const key of Object.keys(this.perms)) {
@@ -1429,13 +1355,10 @@ export class FS {
 	 */
 	readlink(path: string, callback?: (err: Error | null, target: string | null) => void) {
 		const normalizedPath = this.normalizePath(path);
-		const parts = normalizedPath.split("/").filter(Boolean);
-		let dirPromise: Promise<FileSystemDirectoryHandle> = Promise.resolve(this.handle);
-		for (let i = 0; i < parts.length - 1; i++) {
-			dirPromise = dirPromise.then(dirHandle => dirHandle.getDirectoryHandle(parts[i] as string));
-		}
-		const fileName = parts[parts.length - 1];
-		dirPromise
+		const pathParts = this.splitPath(normalizedPath);
+		const fileName = pathParts[pathParts.length - 1];
+		const parentPath = pathParts.length > 1 ? `/${pathParts.slice(0, -1).join("/")}` : "/";
+		this.getDirectoryHandleForPath(parentPath)
 			.then(dirHandle => dirHandle.getFileHandle(fileName as string))
 			.then(fileHandle => fileHandle.getFile())
 			.then(file => {
@@ -1609,7 +1532,6 @@ export class FS {
 		permsEntry.perms = perms;
 		updMeta(this.handle, { [normalizedPath]: permsEntry });
 		this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
-		this.invalidatePathAndParent(normalizedPath);
 		if (callback) callback(null);
 	}
 
@@ -1636,7 +1558,6 @@ export class FS {
 		permsEntry.gid = gid;
 		updMeta(this.handle, { [normalizedPath]: permsEntry });
 		this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
-		this.invalidatePathAndParent(normalizedPath);
 		if (callback) callback(null);
 	}
 
@@ -1678,7 +1599,6 @@ export class FS {
 			perms.perms.push(value);
 			updMeta(this.handle, { [normalizedPath]: perms });
 			this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
-			this.invalidatePathAndParent(normalizedPath);
 		}
 		if (callback) callback(null);
 	}
@@ -1708,19 +1628,18 @@ export class FS {
 		const flagsStr = typeof flags === "number" ? flags.toString() : flags;
 		(async () => {
 			try {
-				const pathParts = normalizedPath.split("/").filter(Boolean);
+				const pathParts = this.splitPath(normalizedPath);
 				const fileName = pathParts[pathParts.length - 1];
 				const parentPath = pathParts.length > 1 ? `/${pathParts.slice(0, -1).join("/")}` : "/";
 				let fileHandle: FileSystemFileHandle;
 				const shouldCreate = flagsStr.includes("w") || flagsStr.includes("a") || flagsStr === "wx" || flagsStr === "ax";
 				const shouldExist = flagsStr === "r" || flagsStr === "r+";
-				const currentHandle = await this.resolveDirectoryHandle(parentPath, shouldCreate);
 				if (shouldExist) {
-					fileHandle = await currentHandle.getFileHandle(fileName as string, { create: false });
+					fileHandle = await this.getDirectoryHandleForPath(parentPath).then(dirHandle => dirHandle.getFileHandle(fileName as string, { create: false }));
 				} else if (shouldCreate) {
-					fileHandle = await currentHandle.getFileHandle(fileName as string, { create: true });
+					fileHandle = await this.getDirectoryHandleForPath(parentPath, true).then(dirHandle => dirHandle.getFileHandle(fileName as string, { create: true }));
 				} else {
-					fileHandle = await currentHandle.getFileHandle(fileName as string, { create: false });
+					fileHandle = await this.getDirectoryHandleForPath(parentPath).then(dirHandle => dirHandle.getFileHandle(fileName as string, { create: false }));
 				}
 				const fd = ++this.fdCounter;
 				this.openFiles.set(fd, { handle: fileHandle, path: normalizedPath, flags: flagsStr });
@@ -1804,7 +1723,6 @@ export class FS {
 					const data = encoder.encode(str);
 					await writable.write(data);
 					await writable.close();
-					this.invalidatePathAndParent(fileInfo.path);
 					if (cb) cb(null, data.length, str);
 				} catch (error: any) {
 					if (cb) cb(error);
@@ -1840,7 +1758,6 @@ export class FS {
 				// @ts-expect-error
 				await writable.write(data);
 				await writable.close();
-				this.invalidatePathAndParent(fileInfo.path);
 				if (cb) cb(null, data.length, buffer);
 			} catch (error: any) {
 				if (cb) cb(error);
