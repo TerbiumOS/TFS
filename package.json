@@ -1,7 +1,7 @@
 {
 	"name": "@terbiumos/tfs",
 	"displayName": "TFS",
-	"version": "1.1.0",
+	"version": "1.1.0-dev.1",
 	"description": "The drop in Filer replacement you have been waiting for. Completely Typed and Built with TypeScript",
 	"type": "module",
 	"types": "/src/index.d.ts",
