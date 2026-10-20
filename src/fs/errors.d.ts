@@ -15,12 +15,14 @@ export declare enum FSErrors {
 	UNKNOWN = "unknown error",
 }
 /**
- * Generates an instance of FSError
+ * Generates an instance of a standardized TFS error.
  * @param {keyof typeof FSErrors} code The Error Code
  * @param {string} path The path of the requested File Operation
  * @param {string} errMSG The original error message (if Error type is unknown)
  */
-export declare function createFSError(code: keyof typeof FSErrors, path?: string, errMSG?: string): Error;
+export declare function createError(code: keyof typeof FSErrors, path?: string, errMSG?: string): Error;
+/** Legacy name retained for consumers using the original TFS API. */
+export declare const createFSError: typeof createError;
 /**
  * Generates an instance of FSError
  * @param {any} err The original error message

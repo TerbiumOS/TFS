@@ -1,5 +1,6 @@
 import { Shell } from "../shell";
 import { Errors } from "./errors";
+import { type MetadataUpdates } from "./metadata";
 export interface FSStats {
 	name: string;
 	size: number;
@@ -66,18 +67,7 @@ export type TFSFD = {
 	fd: number;
 	[fdS]: string;
 };
-export declare const updMeta: (
-	handle: FileSystemDirectoryHandle,
-	perms?: {
-		[key: string]:
-			| {
-					perms: string[];
-					uid: number;
-					gid: number;
-			  }
-			| boolean;
-	},
-) => Promise<void>;
+export declare const updMeta: (handle: FileSystemDirectoryHandle, perms?: MetadataUpdates) => Promise<void>;
 /**
  * The TFS File System Operations Class
  */
@@ -92,6 +82,7 @@ export declare class FS {
 			gid: number;
 		};
 	};
+	readonly ready: Promise<void>;
 	constants: {
 		O_RDONLY: number;
 		O_WRONLY: number;
@@ -137,9 +128,15 @@ export declare class FS {
 	errors: typeof Errors;
 	private fdCounter;
 	private openFiles;
+	private readonly directoryHandleCache;
 	private readonly packIdx;
 	constructor(handle: FileSystemDirectoryHandle);
 	private validatePackIndexEntries;
+	private splitPath;
+	private clearDirectoryCache;
+	/** Clears cached directory handles after the backing store is reformatted. */
+	clearCaches(): void;
+	private getDirectoryHandleForPath;
 	/**
 	 * Normalizes the given path, resolving relative segments like "." and "..".
 	 * If `currPath` is provided, it is used as the base for relative paths.

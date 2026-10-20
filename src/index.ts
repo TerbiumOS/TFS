@@ -1,9 +1,11 @@
 import { Buffer } from "buffer";
+import { version } from "../package.json";
 import { FS } from "./fs";
+import { Errors, genError } from "./fs/errors";
 import { Path } from "./path";
 import { Shell } from "./shell";
-import { version } from "../package.json";
-import { Errors } from "./fs/errors";
+
+export { createError, createFSError, Errors, genError } from "./fs/errors";
 
 /**
  * The TFS File System Library
@@ -14,6 +16,7 @@ export class TFS {
 	path: Path;
 	buffer: typeof Buffer = Buffer;
 	shell: Shell;
+	readonly ready: Promise<void>;
 	version: string = version;
 	/** Polyfill for legacy applications that still expect shell as a uninitialized class */
 	sh?: typeof Shell;
@@ -23,9 +26,10 @@ export class TFS {
 		this.handle = handle;
 		this.fs = new FS(this.handle);
 		this.path = new Path();
-		this.shell = new Shell(this.handle);
+		this.shell = new Shell(this.handle, this.fs);
 		this.sh = Shell;
 		this.Errors = Errors;
+		this.ready = this.fs.ready;
 	}
 
 	/**
@@ -34,7 +38,9 @@ export class TFS {
 	 */
 	static async init(): Promise<TFS> {
 		const handle = await navigator.storage.getDirectory();
-		return new TFS(handle);
+		const tfs = new TFS(handle);
+		await tfs.ready;
+		return tfs;
 	}
 
 	/**
@@ -47,11 +53,18 @@ export class TFS {
 	 * // TFS is now defined on self
 	 */
 	static initSw(): void {
-		navigator.storage.getDirectory().then(handle => {
-			const tfs = new TFS(handle);
-			self.tfs = tfs;
-			console.log("TFS is ready");
-		});
+		navigator.storage
+			.getDirectory()
+			.then(handle => {
+				const tfs = new TFS(handle);
+				return tfs.ready.then(() => {
+					self.tfs = tfs;
+					console.info("[TFS] ready", { version: tfs.version });
+				});
+			})
+			.catch(error => {
+				console.error("[TFS] service worker initialization failed", genError(error));
+			});
 	}
 }
 

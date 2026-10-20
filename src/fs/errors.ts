@@ -35,12 +35,12 @@ const errnoMap: Record<string, number> = {
 };
 
 /**
- * Generates an instance of FSError
+ * Generates an instance of a standardized TFS error.
  * @param {keyof typeof FSErrors} code The Error Code
  * @param {string} path The path of the requested File Operation
  * @param {string} errMSG The original error message (if Error type is unknown)
  */
-export function createFSError(code: keyof typeof FSErrors, path?: string, errMSG?: string) {
+export function createError(code: keyof typeof FSErrors, path?: string, errMSG?: string) {
 	const err = new Error();
 	const callsites = parse(err).slice(1);
 	const lines: string[] = [`Error: ${FSErrors[code]}`];
@@ -58,7 +58,7 @@ export function createFSError(code: keyof typeof FSErrors, path?: string, errMSG
 	if (code === "UNKNOWN" && errMSG) {
 		return {
 			name: "UNKNOWN",
-			code: errMSG,
+			code: errMSG || "UNKNOWN",
 			errno: -1,
 			message: FSErrors[code],
 			path,
@@ -75,40 +75,32 @@ export function createFSError(code: keyof typeof FSErrors, path?: string, errMSG
 	} as Error;
 }
 
+/** Legacy name retained for consumers using the original TFS API. */
+export const createFSError = createError;
+
 /**
  * Generates an instance of FSError
  * @param {any} err The original error message
  * @param {string} path The path of the requested File Operation
  */
 export function genError(err: any, path?: string) {
-	if (err && typeof err.name === "undefined") {
-		const ogerr = err;
-		err = {};
-		err.name = String(ogerr);
-	}
-	if (err && err.name === "NotFoundError") {
-		return createFSError("ENOENT", path);
-	} else if (err && err.name === "TypeMismatchError") {
-		return createFSError("EISDIR", path);
-	} else if (err && err.name === "NoModificationAllowedError") {
-		return createFSError("EPERM", path);
-	} else if (err && err.name === "QuotaExceededError") {
-		return createFSError("ENOSPC", path);
-	} else if (err && err.name === "SecurityError") {
-		return createFSError("EACCES", path);
-	} else if (err && err.name === "InvalidModificationError") {
-		return createFSError("EEXIST", path);
-	} else if (err && err.name === "NotReadableError") {
-		return createFSError("EIO", path);
-	} else if (err && err.name === "DirectoryNotEmptyError") {
-		return createFSError("ENOTEMPTY", path);
-	} else if (err && err.name === "PathExistsError") {
-		return createFSError("EEXIST", path);
-	} else if (err && err.name === "noFD") {
-		return createFSError("EBADF", path);
-	} else {
-		return createFSError("UNKNOWN", path, err && err.message);
-	}
+	const original = err;
+	const name = typeof err === "string" ? err : err?.name;
+	const code = typeof err === "object" ? err?.code : undefined;
+	const message = typeof err === "string" ? err : err?.message;
+	const reason = name === "Error" && typeof message === "string" ? message : name;
+	const standardized = Object.keys(errnoMap).find(key => key === reason || key === code) as keyof typeof FSErrors | undefined;
+	if (standardized) return createError(standardized, path, message);
+	if (reason === "NotFoundError") return createError("ENOENT", path);
+	if (reason === "TypeMismatchError") return createError("EISDIR", path);
+	if (reason === "NoModificationAllowedError") return createError("EPERM", path);
+	if (reason === "QuotaExceededError") return createError("ENOSPC", path);
+	if (reason === "SecurityError") return createError("EACCES", path);
+	if (reason === "InvalidModificationError" || reason === "PathExistsError") return createError("EEXIST", path);
+	if (reason === "NotReadableError") return createError("EIO", path);
+	if (reason === "DirectoryNotEmptyError") return createError("ENOTEMPTY", path);
+	if (reason === "noFD") return createError("EBADF", path);
+	return createError("UNKNOWN", path, message || (original == null ? undefined : String(original)));
 }
 
 /**
@@ -117,7 +109,7 @@ export function genError(err: any, path?: string) {
  */
 export const Errors: Record<string | number, (path?: string, errMSG?: string) => Error> = (Object.keys(FSErrors) as Array<keyof typeof FSErrors>).reduce(
 	(acc, key) => {
-		const fn = (path?: string, errMSG?: string) => createFSError(key, path, errMSG);
+		const fn = (path?: string, errMSG?: string) => createError(key, path, errMSG);
 		acc[key] = fn;
 		const num = errnoMap[key];
 		if (typeof num === "number") {

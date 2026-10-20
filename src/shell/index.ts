@@ -1,7 +1,8 @@
-import { createFSError, genError } from "../fs/errors";
-import { Path } from "../path/index";
-import { FS, type FSStats } from "../fs/index";
 import { minimatch } from "minimatch";
+import { createError, genError } from "../fs/errors";
+import { FS, type FSStats } from "../fs/index";
+import { flushMetadata, resetMetadata } from "../fs/metadata";
+import { Path } from "../path/index";
 
 /**
  * The TFS Shell Operations Class
@@ -18,7 +19,7 @@ export class Shell {
 				.getDirectory()
 				.then(h => (this.handle = h))
 				.catch(() => {
-					throw new Error("Failed to get a handle. Try defining one?");
+					throw genError("Failed to get a handle. Try defining one?");
 				}) as unknown as FileSystemDirectoryHandle;
 		}
 		this.handle = handle;
@@ -40,7 +41,7 @@ export class Shell {
 			if (exists) {
 				this.cwd = newPath;
 			} else {
-				throw createFSError("ENOENT", `No such file or directory: ${newPath}`);
+				throw createError("ENOENT", `No such file or directory: ${newPath}`);
 			}
 		});
 	}
@@ -186,7 +187,7 @@ export class Shell {
 				const func = new Function("fs", "args", "callback", code);
 				func(context.fs, context.args, context.callback);
 			} catch (e) {
-				if (callback) callback(e as Error, null);
+				if (callback) callback(genError(e, scriptPath), null);
 			}
 		});
 	}
@@ -345,7 +346,7 @@ export class Shell {
 								if (errorOccurred) return;
 								if (err) {
 									errorOccurred = true;
-									if (callback) callback(err);
+									if (callback) callback(genError(err, entryPath));
 									return;
 								}
 								if (!--pending) {
@@ -438,30 +439,21 @@ export class Shell {
 	 * await tfs.shell.format();
 	 */
 	async format() {
-		// @ts-expect-error This api exists but is not typed in ES2024 for whatever reason
-		await (await navigator.storage.getDirectory()).remove({ recursive: true });
-		const fileHandle = await this.handle.getFileHandle(".TFS_STORE", { create: true });
-		const writable = await fileHandle.createWritable();
-		await writable.write(
-			JSON.stringify(
-				{
-					"/.TFS_STORE": {
-						perms: ["r"],
-						uid: 0,
-						gid: 0,
-						c: Date.now(),
-					},
-				},
-				null,
-				2,
-			),
-		);
-		await writable.close();
-		this.fs.perms = await this.fs.promises
-			.readFile(".TFS_STORE", "utf8")
-			.then(data => JSON.parse(data))
-			.catch(() => ({}));
-		console.log(`[TFS] Operation Completed at: ${new Date().toISOString()}`);
+		await this.fs.ready;
+		await flushMetadata(this.handle).catch(error => {
+			console.warn("[TFS.format] metadata flush failed before format", genError(error));
+		});
+		const removableHandle = this.handle as FileSystemDirectoryHandle & { remove?: (options?: { recursive?: boolean }) => Promise<void> };
+		if (typeof removableHandle.remove === "function") {
+			await removableHandle.remove({ recursive: true });
+		} else {
+			const storageHandle = (await navigator.storage.getDirectory()) as FileSystemDirectoryHandle & { remove?: (options?: { recursive?: boolean }) => Promise<void> };
+			if (typeof storageHandle.remove === "function") await storageHandle.remove({ recursive: true });
+		}
+		this.fs.clearCaches();
+		const state = await resetMetadata(this.handle);
+		this.fs.perms = state.perms;
+		console.info(`[TFS] format completed at ${new Date().toISOString()}`);
 	}
 
 	promises = {

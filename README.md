@@ -68,6 +68,12 @@ however, if your lazy or are using some kind of compatability layer and still wa
 
 As for the actual FS Usage, it remains the same as [Filer](https://github.com/filerjs/filer?tab=readme-ov-file#api-reference) which targets a [node:fs](https://nodejs.org/api/fs.html) like syntax
 
+## Metadata Storage
+
+TFS stores permission metadata in a compact binary `.TSD` index. The index is hidden from TFS directory listings and is initialized before `TFS.init()` resolves. Existing `.TFS_STORE` JSON files are migrated on first use, marked as migrated in the TSD header, and removed after the new index is safely written.
+
+For async performance tests, use `window.tfs.fs.promises.writeFile`, `readFile`, and `unlink`. The callback-style methods intentionally return `void` and must be measured through their callbacks.
+
 ## Contributing
 
 Contributions are always welcome! Feel free to make a PR to help advance this project even further as its not just intended for Terbium use but also for use in projects that already rely on Filer for storage

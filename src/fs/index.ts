@@ -1,8 +1,10 @@
-import { Shell } from "../shell";
 import { Buffer } from "buffer";
-import { createFSError, Errors, genError } from "./errors";
+import { Shell } from "../shell";
+import { createError, Errors, genError } from "./errors";
+import { initializeMetadata, type MetadataUpdates, TSD_FILE, updateMetadata } from "./metadata";
 
 const BINARY_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "mp3", "wav", "ogg", "flac", "m4a", "aac", "mp4", "m4v", "mov", "avi", "mkv", "webm", "pdf", "zip", "tar", "gz", "tgz", "7z", "rar", "exe", "dll", "class", "bin", "idx", "pack"]);
+const INTERNAL_METADATA_FILES = new Set([".TFS_STORE", ".TSD"]);
 
 export interface FSStats {
 	name: string;
@@ -74,24 +76,8 @@ export type TFSFD = {
 	[fdS]: string;
 };
 
-export const updMeta = async (handle: FileSystemDirectoryHandle, perms?: { [key: string]: { perms: string[]; uid: number; gid: number } | boolean }) => {
-	const fileHandle = await handle.getFileHandle(".TFS_STORE", { create: true });
-	const store = await fileHandle.getFile();
-	const currentPerms = JSON.parse(await store.text());
-	let updatedPerms = { ...currentPerms };
-	if (perms) {
-		for (const key in perms) {
-			const value = perms[key];
-			if (value === true) {
-				delete updatedPerms[key];
-			} else if (value !== false) {
-				updatedPerms[key] = value;
-			}
-		}
-	}
-	const writable = await fileHandle.createWritable();
-	await writable.write(JSON.stringify(updatedPerms, null, 2));
-	await writable.close();
+export const updMeta = async (handle: FileSystemDirectoryHandle, perms?: MetadataUpdates): Promise<void> => {
+	await updateMetadata(handle, perms);
 };
 
 /**
@@ -102,6 +88,7 @@ export class FS {
 	currPath: string;
 	shell: Shell;
 	perms: { [key: string]: { perms: string[]; uid: number; gid: number } } = {};
+	readonly ready: Promise<void>;
 	constants = FSConstants;
 	errors: typeof Errors = Errors;
 	private fdCounter = 0;
@@ -113,30 +100,14 @@ export class FS {
 		this.handle = handle;
 		this.currPath = "/";
 		this.shell = new Shell(this.handle, this);
-		this.promises.exists(".TFS_STORE").then(async exists => {
-			if (!exists) {
-				const fileHandle = await this.handle.getFileHandle(".TFS_STORE", { create: true });
-				const writable = await fileHandle.createWritable();
-				await writable.write(
-					JSON.stringify(
-						{
-							"/.TFS_STORE": {
-								perms: ["r"],
-								uid: 0,
-								gid: 0,
-							},
-						},
-						null,
-						2,
-					),
-				);
-				await writable.close();
-			}
-			this.perms = await this.promises
-				.readFile(".TFS_STORE", "utf8")
-				.then(data => JSON.parse(data))
-				.catch(() => ({}));
-		});
+		this.ready = initializeMetadata(this.handle)
+			.then(state => {
+				this.perms = state.perms;
+			})
+			.catch(error => {
+				this.perms = {};
+				console.error("[TFS.metadata] initialization failed", genError(error, TSD_FILE));
+			});
 	}
 
 	private async validatePackIndexEntries(dirPath: string, entries: string[]): Promise<string[]> {
@@ -158,7 +129,7 @@ export class FS {
 					this.unlink(packPath, () => {});
 					return null;
 				} catch (err) {
-					console.warn("[TFS.readdir] excluding unreadable pack index", idxPath, err);
+					console.warn("[TFS.readdir] excluding unreadable pack index", idxPath, genError(err, idxPath));
 					return null;
 				}
 			}),
@@ -177,6 +148,11 @@ export class FS {
 				this.directoryHandleCache.delete(key);
 			}
 		}
+	}
+
+	/** Clears cached directory handles after the backing store is reformatted. */
+	clearCaches() {
+		this.directoryHandleCache.clear();
 	}
 
 	private getDirectoryHandleForPath(path: string, create = false): Promise<FileSystemDirectoryHandle> {
@@ -379,11 +355,12 @@ export class FS {
 				}
 				// @ts-expect-error
 				await writable.write(toWrite);
-				if (!this.perms[normalizedPath]) {
-					updMeta(this.handle, { [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } });
-					this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
-				}
 				await writable.close();
+				if (!this.perms[normalizedPath]) {
+					const entry = { perms: ["a"], uid: 0, gid: 0 };
+					await updMeta(this.handle, { [normalizedPath]: entry });
+					this.perms = { ...this.perms, [normalizedPath]: entry };
+				}
 				if (pathParts.length > 1) this.clearDirectoryCache(parentPath);
 			})
 			.then(() => {
@@ -502,9 +479,9 @@ export class FS {
 					return;
 				}
 				if (normalizedPath.includes("/objects/pack/") && (normalizedPath.endsWith(".idx") || normalizedPath.endsWith(".pack"))) {
-					console.error("[TFS.readFile] open/getFile failed", normalizedPath, err);
+					console.error("[TFS.readFile] open/getFile failed", normalizedPath, genError(err, normalizedPath));
 				}
-				if (cb && typeof cb === "function") cb(genError(err, file), null);
+				if (cb && typeof cb === "function") cb(genError(err, normalizedPath), null);
 			});
 	}
 
@@ -520,15 +497,14 @@ export class FS {
 	 */
 	mkdir(dir: string, callback?: (err: Error | null) => void) {
 		const normalizedPath = this.normalizePath(dir);
-		if (callback) {
-			this.getDirectoryHandleForPath(normalizedPath, true)
-				.then(() => callback(null))
-				.catch(err => {
-					callback(genError(err, dir));
-				});
-			updMeta(this.handle, { [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } });
-			this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
-		}
+		this.getDirectoryHandleForPath(normalizedPath, true)
+			.then(async () => {
+				const entry = { perms: ["a"], uid: 0, gid: 0 };
+				await updMeta(this.handle, { [normalizedPath]: entry });
+				this.perms = { ...this.perms, [normalizedPath]: entry };
+				callback?.(null);
+			})
+			.catch(err => callback?.(genError(err, dir)));
 	}
 
 	/**
@@ -555,7 +531,7 @@ export class FS {
 							const out: string[] = [];
 							const walk = async (baseHandle: FileSystemDirectoryHandle, relPrefix = "") => {
 								for await (const [name, entryHandle] of baseHandle.entries()) {
-									if (name === ".TFS_STORE") continue;
+									if (INTERNAL_METADATA_FILES.has(name)) continue;
 									const rel = relPrefix ? `${relPrefix}/${name}` : name;
 									out.push(rel);
 									if (entryHandle.kind === "directory") {
@@ -574,7 +550,7 @@ export class FS {
 				(async () => {
 					try {
 						for await (const [name] of dirHandle.entries()) {
-							if (name !== ".TFS_STORE") entries.push(name);
+							if (!INTERNAL_METADATA_FILES.has(name)) entries.push(name);
 						}
 						this.validatePackIndexEntries(normalizedPath, entries)
 							.then(validEntries => cb(null, validEntries))
@@ -644,50 +620,53 @@ export class FS {
 					.getFileHandle(lastPart as string)
 					.then(fileHandle =>
 						fileHandle.getFile().then(file =>
-							file.text().then(text => {
-								const isSymlink = /^symlink:(.+?):(file|dir|junction)$/.exec(text);
-								if (isSymlink) {
-									const target = isSymlink[1];
-									this.stat(target as string, (err, stats) => {
-										if (err) {
-											callback(genError(err, target), null);
-										} else if (stats) {
-											callback(null, {
-												...stats,
-												dev: "OPFS",
-												mime: "application/symlink",
-												type: "SYMLINK",
-												isSymbolicLink: () => true,
-												isDirectory: () => stats.type === "DIRECTORY",
-												isFile: () => stats.type !== "DIRECTORY",
-												mode: this.perms[normalizedPath]?.uid! || 0o120777,
-												atime: new Date(),
-												atimeMs: new Date().getTime(),
-											});
-										}
-									});
-								} else {
-									callback(null, {
-										name: file.name,
-										size: file.size,
-										mime: file.type,
-										type: file.type === "DIRECTORY" ? "DIRECTORY" : "FILE",
-										ctime: new Date(file.lastModified),
-										mtime: new Date(file.lastModified),
-										atime: new Date(),
-										ctimeMs: file.lastModified,
-										mtimeMs: file.lastModified,
-										atimeMs: new Date().getTime(),
-										dev: "OPFS",
-										isSymbolicLink: () => false,
-										isDirectory: () => file.type === "DIRECTORY",
-										isFile: () => file.type !== "DIRECTORY",
-										uid: 0,
-										gid: 0,
-										mode: perm,
-									});
-								}
-							}),
+							file
+								.slice(0, 4096)
+								.text()
+								.then(text => {
+									const isSymlink = /^symlink:(.+?):(file|dir|junction)$/.exec(text);
+									if (isSymlink) {
+										const target = isSymlink[1];
+										this.stat(target as string, (err, stats) => {
+											if (err) {
+												callback(genError(err, target), null);
+											} else if (stats) {
+												callback(null, {
+													...stats,
+													dev: "OPFS",
+													mime: "application/symlink",
+													type: "SYMLINK",
+													isSymbolicLink: () => true,
+													isDirectory: () => stats.type === "DIRECTORY",
+													isFile: () => stats.type !== "DIRECTORY",
+													mode: this.perms[normalizedPath]?.uid! || 0o120777,
+													atime: new Date(),
+													atimeMs: new Date().getTime(),
+												});
+											}
+										});
+									} else {
+										callback(null, {
+											name: file.name,
+											size: file.size,
+											mime: file.type,
+											type: file.type === "DIRECTORY" ? "DIRECTORY" : "FILE",
+											ctime: new Date(file.lastModified),
+											mtime: new Date(file.lastModified),
+											atime: new Date(),
+											ctimeMs: file.lastModified,
+											mtimeMs: file.lastModified,
+											atimeMs: new Date().getTime(),
+											dev: "OPFS",
+											isSymbolicLink: () => false,
+											isDirectory: () => file.type === "DIRECTORY",
+											isFile: () => file.type !== "DIRECTORY",
+											uid: 0,
+											gid: 0,
+											mode: perm,
+										});
+									}
+								}),
 						),
 					)
 					.catch(err => {
@@ -910,7 +889,7 @@ export class FS {
 	appendFile(path: string, data: string | ArrayBuffer | ArrayBufferView, callback: (err: Error | null) => void) {
 		this.readFile(path, "arraybuffer", (err, existingData) => {
 			if (err && err.name !== "NotFoundError") {
-				callback(err);
+				callback(genError(err, path));
 				return;
 			}
 			const normalizedPath = this.normalizePath(path);
@@ -1079,12 +1058,13 @@ export class FS {
 			if (callback) callback(genError("SecurityError", normalizedPath));
 			return;
 		}
-		updMeta(this.handle, { [normalizedPath]: true });
 		this.getDirectoryHandleForPath(parentPath)
 			.then(dirHandle => {
 				return dirHandle.removeEntry(fileName as string);
 			})
-			.then(() => {
+			.then(async () => {
+				await updMeta(this.handle, { [normalizedPath]: true });
+				delete this.perms[normalizedPath];
 				if (pathParts.length > 1) this.clearDirectoryCache(parentPath);
 				if (callback) callback(null);
 			})
@@ -1113,12 +1093,15 @@ export class FS {
 			if (cb && typeof cb === "function") cb(genError("SecurityError", normalizedPath));
 			return;
 		}
-		updMeta(this.handle, { [normalizedPath]: true });
 		this.getDirectoryHandleForPath(parentPath)
 			.then(dirHandle => {
 				return dirHandle.removeEntry(dirName as string);
 			})
-			.then(() => {
+			.then(async () => {
+				await updMeta(this.handle, { [normalizedPath]: true });
+				for (const key of Object.keys(this.perms)) {
+					if (key === normalizedPath || key.startsWith(`${normalizedPath}/`)) delete this.perms[key];
+				}
 				if (pathParts.length > 1) this.clearDirectoryCache(parentPath);
 				if (cb && typeof cb === "function") cb(null);
 			})
@@ -1357,21 +1340,21 @@ export class FS {
 		const src = this.normalizePath(existingPath);
 		const dest = this.normalizePath(newPath);
 		if (src === dest) {
-			if (callback) callback(createFSError("EEXIST", dest));
+			if (callback) callback(createError("EEXIST", dest));
 			return;
 		}
 		this.stat(src, (err, stats) => {
 			if (err || !stats) {
-				if (callback) callback(err);
+				if (callback) callback(genError(err, src));
 				return;
 			}
 			if (stats.type === "DIRECTORY") {
-				if (callback) callback(createFSError("EISDIR", src));
+				if (callback) callback(createError("EISDIR", src));
 				return;
 			}
 			this.stat(dest, (destErr, destStats) => {
 				if (!destErr && destStats) {
-					if (callback) callback(createFSError("EEXIST", dest));
+					if (callback) callback(createError("EEXIST", dest));
 					return;
 				}
 				if (destErr && destErr.name !== "NotFoundError" && (destErr as any).code !== "ENOENT") {
@@ -1390,10 +1373,15 @@ export class FS {
 						}
 						if (this.perms[src]) {
 							const entry = { ...this.perms[src] };
-							updMeta(this.handle, { [dest]: entry });
-							this.perms = { ...this.perms, [dest]: entry };
+							updMeta(this.handle, { [dest]: entry })
+								.then(() => {
+									this.perms = { ...this.perms, [dest]: entry };
+									callback?.(null);
+								})
+								.catch(metaErr => callback?.(genError(metaErr, dest)));
+							return;
 						}
-						if (callback) callback(null);
+						callback?.(null);
 					});
 				});
 			});
@@ -1415,7 +1403,10 @@ export class FS {
 		const oldP = this.normalizePath(oldPath);
 		const newP = this.normalizePath(newPath);
 		this.readFile(oldP, "arraybuffer", (err, data) => {
-			if (err) genError(err, oldP);
+			if (err) {
+				callback?.(genError(err, oldP));
+				return;
+			}
 			this.writeFile(newP, data, "arraybuffer", callback);
 		});
 	}
@@ -1496,10 +1487,13 @@ export class FS {
 		if (mode & this.constants.S_IWUSR || mode & this.constants.S_IWGRP || mode & this.constants.S_IWOTH) perms.push("w");
 		if (mode & this.constants.S_IXUSR || mode & this.constants.S_IXGRP || mode & this.constants.S_IXOTH) perms.push("x");
 		if (mode & this.constants.O_APPEND) perms.push("a");
-		permsEntry.perms = perms;
-		updMeta(this.handle, { [normalizedPath]: permsEntry });
-		this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
-		if (callback) callback(null);
+		const updatedEntry = { ...permsEntry, perms };
+		updMeta(this.handle, { [normalizedPath]: updatedEntry })
+			.then(() => {
+				this.perms = { ...this.perms, [normalizedPath]: updatedEntry };
+				callback?.(null);
+			})
+			.catch(error => callback?.(genError(error, normalizedPath)));
 	}
 
 	/**
@@ -1521,11 +1515,13 @@ export class FS {
 			if (callback) callback(genError("NotFoundError", normalizedPath));
 			return;
 		}
-		permsEntry.uid = uid;
-		permsEntry.gid = gid;
-		updMeta(this.handle, { [normalizedPath]: permsEntry });
-		this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
-		if (callback) callback(null);
+		const updatedEntry = { ...permsEntry, uid, gid };
+		updMeta(this.handle, { [normalizedPath]: updatedEntry })
+			.then(() => {
+				this.perms = { ...this.perms, [normalizedPath]: updatedEntry };
+				callback?.(null);
+			})
+			.catch(error => callback?.(genError(error, normalizedPath)));
 	}
 
 	/**
@@ -1563,11 +1559,16 @@ export class FS {
 			return;
 		}
 		if (!perms.perms.includes(value)) {
-			perms.perms.push(value);
-			updMeta(this.handle, { [normalizedPath]: perms });
-			this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
+			const updatedEntry = { ...perms, perms: [...perms.perms, value] };
+			updMeta(this.handle, { [normalizedPath]: updatedEntry })
+				.then(() => {
+					this.perms = { ...this.perms, [normalizedPath]: updatedEntry };
+					callback?.(null);
+				})
+				.catch(error => callback?.(genError(error, normalizedPath)));
+			return;
 		}
-		if (callback) callback(null);
+		callback?.(null);
 	}
 
 	/**
@@ -1613,9 +1614,9 @@ export class FS {
 				if (callback) callback(null, fd);
 			} catch (error: any) {
 				if (error.name === "NotFoundError") {
-					if (callback) callback(createFSError("ENOENT", normalizedPath));
+					if (callback) callback(createError("ENOENT", normalizedPath));
 				} else {
-					if (callback) callback(error);
+					if (callback) callback(genError(error, normalizedPath));
 				}
 			}
 		})();
@@ -1633,7 +1634,7 @@ export class FS {
 	 */
 	close(fd: number, callback?: (err: Error | null) => void) {
 		if (!this.openFiles.has(fd)) {
-			if (callback) callback(createFSError("EBADF", fd.toString()));
+			if (callback) callback(createError("EBADF", fd.toString()));
 			return;
 		}
 		this.openFiles.delete(fd);
@@ -1675,12 +1676,14 @@ export class FS {
 			const encoding = typeof length === "string" ? length : "utf8";
 			const cb = typeof position === "function" ? position : callback;
 			(async () => {
+				let filePath = fd.toString();
 				try {
 					const fileInfo = this.openFiles.get(fd);
 					if (!fileInfo) {
-						if (cb) cb(createFSError("EBADF", fd.toString()));
+						if (cb) cb(createError("EBADF", fd.toString()));
 						return;
 					}
+					filePath = fileInfo.path;
 					const file = await fileInfo.handle.getFile();
 					const writable = await fileInfo.handle.createWritable({ keepExistingData: true });
 					if (pos !== null) {
@@ -1692,7 +1695,7 @@ export class FS {
 					await writable.close();
 					if (cb) cb(null, data.length, str);
 				} catch (error: any) {
-					if (cb) cb(error);
+					if (cb) cb(genError(error, filePath));
 				}
 			})();
 			return;
@@ -1702,12 +1705,14 @@ export class FS {
 		const pos = typeof position === "number" ? position : null;
 		const cb = typeof position === "function" ? position : callback;
 		(async () => {
+			let filePath = fd.toString();
 			try {
 				const fileInfo = this.openFiles.get(fd);
 				if (!fileInfo) {
-					if (cb) cb(createFSError("EBADF", fd.toString()));
+					if (cb) cb(createError("EBADF", fd.toString()));
 					return;
 				}
+				filePath = fileInfo.path;
 				let data: Uint8Array;
 				if (buffer instanceof ArrayBuffer) {
 					data = new Uint8Array(buffer, off, len);
@@ -1715,7 +1720,7 @@ export class FS {
 					const uint8Array = new Uint8Array(buffer.buffer, buffer.byteOffset + off, len !== undefined ? len : buffer.byteLength - off);
 					data = uint8Array;
 				} else {
-					if (cb) cb(createFSError("EINVAL", fd.toString()));
+					if (cb) cb(createError("EINVAL", fd.toString()));
 					return;
 				}
 				const writable = await fileInfo.handle.createWritable({ keepExistingData: true });
@@ -1727,7 +1732,7 @@ export class FS {
 				await writable.close();
 				if (cb) cb(null, data.length, buffer);
 			} catch (error: any) {
-				if (cb) cb(error);
+				if (cb) cb(genError(error, filePath));
 			}
 		})();
 	}
@@ -1774,7 +1779,7 @@ export class FS {
 			if (cb) {
 				doRead()
 					.then(result => cb && cb(null, result))
-					.catch(err => cb && cb(err));
+					.catch(err => cb && cb(genError(err, path)));
 				return;
 			}
 			return doRead();
@@ -1784,12 +1789,14 @@ export class FS {
 		const cb = callback as (err: Error | null, bytesRead?: number, buffer?: ArrayBufferView) => void;
 		const pos = position ?? null;
 		(async () => {
+			let filePath = fd.toString();
 			try {
 				const fileInfo = this.openFiles.get(fd);
 				if (!fileInfo) {
-					if (cb) cb(createFSError("EBADF", fd.toString()));
+					if (cb) cb(createError("EBADF", fd.toString()));
 					return;
 				}
+				filePath = fileInfo.path;
 				const file = await fileInfo.handle.getFile();
 				const fileBuffer = await file.arrayBuffer();
 				const startPos = pos !== null ? pos : 0;
@@ -1804,7 +1811,7 @@ export class FS {
 				targetData.set(sourceData.subarray(0, Math.min(bytesToRead, length || 0)));
 				if (cb) cb(null, bytesToRead, buffer);
 			} catch (error: any) {
-				if (cb) cb(error);
+				if (cb) cb(genError(error, filePath));
 			}
 		})();
 	}
@@ -1822,10 +1829,16 @@ export class FS {
 		const perms = this.perms[normalizedPath];
 		if (!perms || !Array.isArray(perms.perms)) return false;
 		if (!perms.perms.includes("x")) {
-			perms.perms.push("x");
-			updMeta(this.handle, { [normalizedPath]: perms });
-			this.perms = { ...this.perms, [normalizedPath]: { perms: ["a"], uid: 0, gid: 0 } };
-			if (callback) callback(true);
+			const updatedEntry = { ...perms, perms: [...perms.perms, "x"] };
+			updMeta(this.handle, { [normalizedPath]: updatedEntry })
+				.then(() => {
+					this.perms = { ...this.perms, [normalizedPath]: updatedEntry };
+					callback?.(true);
+				})
+				.catch(error => {
+					console.error("[TFS.metadata] failed to update execute permission", genError(error, normalizedPath));
+					callback?.(false);
+				});
 		} else {
 			if (callback) callback(false);
 		}

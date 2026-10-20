@@ -1,8 +1,9 @@
 import { Buffer } from "buffer";
 import { FS } from "./fs";
+import { Errors } from "./fs/errors";
 import { Path } from "./path";
 import { Shell } from "./shell";
-import { Errors } from "./fs/errors";
+export { createError, createFSError, Errors, genError } from "./fs/errors";
 /**
  * The TFS File System Library
  */
@@ -12,6 +13,7 @@ export declare class TFS {
 	path: Path;
 	buffer: typeof Buffer;
 	shell: Shell;
+	readonly ready: Promise<void>;
 	version: string;
 	/** Polyfill for legacy applications that still expect shell as a uninitialized class */
 	sh?: typeof Shell;
